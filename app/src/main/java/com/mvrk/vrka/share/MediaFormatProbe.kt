@@ -2,9 +2,10 @@ package com.mvrk.vrka.share
 
 import com.mvrk.vrka.DownloadRequestFactory
 import com.yausername.youtubedl_android.YoutubeDL
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
+import kotlinx.coroutines.async
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
@@ -16,17 +17,21 @@ import java.util.concurrent.ConcurrentHashMap
 object MediaFormatProbe {
 
     /** In-flight probes keyed by URL so a double-share does not spawn duplicate yt-dlp runs. */
-    private val inFlight = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<MediaInfo>>()
+    private val inFlight = ConcurrentHashMap<String, Deferred<MediaInfo>>()
 
-    suspend fun probe(url: String, scope: kotlinx.coroutines.CoroutineScope): MediaInfo =
-        runCatching {
+    /**
+     * Probes [url], de-duplicating concurrent probes for the same link.
+     *
+     * The entry is always removed afterwards so a deliberate re-download later still re-probes.
+     */
+    suspend fun probe(url: String, scope: CoroutineScope): MediaInfo =
+        try {
             inFlight.computeIfAbsent(url) {
-                kotlinx.coroutines.async(scope + Dispatchers.IO) { runProbe(url) }
+                scope.async(Dispatchers.IO) { runProbe(url) }
             }.await()
-        }.getOrElse { error ->
+        } finally {
             inFlight.remove(url)
-            throw error
-        }.also { inFlight.remove(url) }
+        }
 
     private fun runProbe(url: String): MediaInfo {
         val request = DownloadRequestFactory.info(

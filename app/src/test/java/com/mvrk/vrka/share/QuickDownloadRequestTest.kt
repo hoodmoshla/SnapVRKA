@@ -6,6 +6,7 @@ import com.mvrk.vrka.DownloadJob
 import com.mvrk.vrka.MediaMode
 import com.mvrk.vrka.VideoQuality
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,6 +77,33 @@ class QuickDownloadRequestTest {
             "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
             args[formatIndex + 1],
         )
+    }
+
+    @Test
+    fun jobStorePersistsAndRestoresFormatSelector() {
+        val directory = java.io.File("build/tmp/snapvrka-format-selector-store").apply { mkdirs() }
+        val file = java.io.File(directory, "jobs.json")
+        if (file.exists()) file.delete()
+        val store = com.mvrk.vrka.JobStore(file)
+
+        val request = com.mvrk.vrka.DownloadRequest(url = url, formatSelector = "137+140/137/best")
+        store.save(listOf(com.mvrk.vrka.DownloadJob(id = "job-1", request = request)))
+
+        val restored = store.load().single()
+        assertEquals("137+140/137/best", restored.request.formatSelector)
+    }
+
+    @Test
+    fun jobStoreLeavesFormatSelectorNullWhenAbsent() {
+        val directory = java.io.File("build/tmp/snapvrka-format-selector-store").apply { mkdirs() }
+        val file = java.io.File(directory, "jobs-empty.json")
+        if (file.exists()) file.delete()
+        val store = com.mvrk.vrka.JobStore(file)
+
+        store.save(listOf(com.mvrk.vrka.DownloadJob(id = "job-2", request = com.mvrk.vrka.DownloadRequest(url = url))))
+
+        val restored = store.load().single()
+        assertNull(restored.request.formatSelector)
     }
 
     @Test

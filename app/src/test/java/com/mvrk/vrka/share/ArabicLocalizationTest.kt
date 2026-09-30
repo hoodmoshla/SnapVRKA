@@ -28,6 +28,7 @@ class ArabicLocalizationTest {
     /** Values that are legitimately not Arabic (brands, codecs, units, product names). */
     private val technicalValues = setOf(
         "app_name", "app_full_name", "nav_settings_font_placeholder",
+        "quick_title", "quick_size_exact",
         "quality_2160", "quality_1440", "quality_1080", "quality_720", "quality_480", "quality_360",
         "config_sponsorblock", "settings_browser_engine_subtitle", "settings_media_detection_subtitle",
         "quick_audio_opus", "quick_audio_opus_native", "quick_audio_mp3", "size_value_gb", "size_value_mb", "size_value_kb",

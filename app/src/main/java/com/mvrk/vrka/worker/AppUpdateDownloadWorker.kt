@@ -150,7 +150,7 @@ class AppUpdateDownloadWorker(
     }
 
     companion object {
-        private const val TAG = "VRKA-AppUpdateWorker"
+        private const val TAG = "SnapVRKA-AppUpdateWorker"
         const val WORK_NAME = "VRKA_APP_UPDATE_WORK"
         const val PREFS_NAME = "vrka_app_update_prefs"
 
