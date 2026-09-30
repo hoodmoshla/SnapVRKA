@@ -1,4 +1,363 @@
 <resources>
-    <string name="app_name">VRKA</string>
-</resources>
+    <!-- Application identity -->
+    <string name="app_name">SnapVRKA</string>
+    <string name="app_full_name">SnapVRKA</string>
 
+    <!-- Navigation -->
+    <string name="nav_download">تنزيل</string>
+    <string name="nav_queue">قائمة الانتظار</string>
+    <string name="nav_history">السجل</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Common actions -->
+    <string name="action_download">تنزيل</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_remove">إزالة</string>
+    <string name="action_open">فتح</string>
+    <string name="action_share">مشاركة</string>
+    <string name="share_with">مشاركة عبر</string>
+    <string name="action_retry">إعادة المحاولة</string>
+    <string name="action_copy_link">نسخ الرابط</string>
+    <string name="action_paste">لصق</string>
+    <string name="action_clear">مسح</string>
+    <string name="action_clear_all">مسح الكل</string>
+    <string name="action_clear_history">مسح السجل</string>
+    <string name="action_change">تغيير</string>
+    <string name="action_reset">إعادة الضبط</string>
+    <string name="action_update">تحديث</string>
+    <string name="action_check_updates">التحقق من التحديثات</string>
+    <string name="action_choose_location">اختيار المجلد</string>
+    <string name="action_add_queue">إضافة إلى قائمة الانتظار</string>
+    <string name="action_close">إغلاق</string>
+    <string name="action_back">رجوع</string>
+    <string name="action_minimize">تصغير</string>
+    <string name="action_interact">تفاعل</string>
+    <string name="action_set_location">تحديد المجلد</string>
+    <string name="action_view_details">عرض التفاصيل</string>
+    <string name="action_hide_details">إخفاء التفاصيل</string>
+    <string name="action_copy_details">نسخ التفاصيل</string>
+    <string name="action_advanced_options">خيارات متقدمة</string>
+    <string name="action_hide_advanced_options">إخفاء الخيارات المتقدمة</string>
+
+    <!-- Job states -->
+    <string name="state_queued">في الانتظار</string>
+    <string name="state_preparing">جارٍ التحضير</string>
+    <string name="state_waiting_for_user">بانتظار اختيارك</string>
+    <string name="state_browser_fallback">تحليل عبر المتصفح</string>
+    <string name="state_downloading">جارٍ التنزيل</string>
+    <string name="state_postprocessing">جارٍ الإنهاء</string>
+    <string name="state_done">اكتمل</string>
+    <string name="state_failed">فشل</string>
+    <string name="state_cancelled">أُلغي</string>
+    <string name="state_analysing">جارٍ التحليل</string>
+    <string name="state_publishing">جارٍ الحفظ</string>
+    <string name="state_merging">جارٍ الدمج</string>
+    <string name="state_converting">جارٍ التحويل</string>
+    <string name="state_trimming">جارٍ القص</string>
+
+    <!-- Job details (internal status tokens localized for display) -->
+    <string name="detail_waiting">في الانتظار</string>
+    <string name="detail_queued_retry">أُعيدت جدولة المحاولة</string>
+    <string name="detail_cancelled">أُلغي التنزيل</string>
+    <string name="detail_folder_selected">تم اختيار المجلد؛ جارٍ المتابعة</string>
+    <string name="detail_choose_location">اختر مجلد الحفظ لبدء التنزيل</string>
+    <string name="detail_location_unavailable">مجلد الحفظ غير متاح؛ اختر مجلدًا آخر</string>
+    <string name="detail_starting_runtime">جارٍ تشغيل المحرك</string>
+    <string name="detail_source_ready">المصدر جاهز</string>
+    <string name="detail_retrying_direct">جارٍ إعادة الاستخراج المباشر</string>
+    <string name="detail_starting_fallback">فشل الاستخراج المباشر؛ بدء التحليل عبر المتصفح</string>
+    <string name="detail_candidate_selected">تم اختيار المصدر؛ جارٍ التنزيل</string>
+    <string name="detail_downloading">جارٍ التنزيل</string>
+    <string name="detail_post_processing">جارٍ المعالجة النهائية</string>
+    <string name="detail_publishing">جارٍ الحفظ في التنزيلات</string>
+    <string name="detail_downloading_browser">جارٍ التنزيل عبر شبكة المتصفح</string>
+    <string name="detail_segment">جارٍ تنزيل الجزء %1$d/%2$d</string>
+    <string name="detail_saved_opus_transcoded">تم الحفظ (حُوّل إلى Opus)</string>
+    <string name="detail_saved_opus_native">تم الحفظ (نسخ مباشر لـ Opus)</string>
+    <string name="detail_saved_single">تم الحفظ في التنزيلات/SnapVRKA</string>
+    <string name="detail_saved_multi">تم حفظ %1$d ملفات</string>
+    <string name="detail_failed">فشل التنزيل</string>
+    <string name="detail_fallback_failed">لم يتم العثور على بث وسائط عبر المتصفح</string>
+    <string name="detail_active_download">تنزيل نشط</string>
+    <string name="detail_preparing_runtime">جارٍ تجهيز yt-dlp و FFmpeg</string>
+    <string name="detail_ytdlp_ready">yt-dlp %1$s جاهز</string>
+    <string name="detail_updating_ytdlp">جارٍ تحديث yt-dlp</string>
+    <string name="detail_update_failed_retained">فشل التحديث؛ تم الإبقاء على نسخة سليمة: %1$s</string>
+
+    <!-- Home -->
+    <string name="home_url_hint">أدخل رابط الوسائط...</string>
+    <string name="home_video_resolution">دقة الفيديو</string>
+    <string name="home_audio_format">صيغة الصوت</string>
+    <string name="home_mp3_bitrate">معدل بت MP3</string>
+    <string name="home_kbps">%1$d كيلوبت/ث</string>
+    <string name="home_audio_quality">جودة الصوت</string>
+    <string name="quality_best_available">أفضل جودة متاحة</string>
+    <string name="quality_best_short">الأفضل</string>
+    <string name="quality_2160">2160p 4K</string>
+    <string name="quality_1440">1440p 2K</string>
+    <string name="quality_1080">1080p FHD</string>
+    <string name="quality_720">720p HD</string>
+    <string name="quality_480">480p</string>
+    <string name="quality_360">360p</string>
+    <string name="mode_video">فيديو</string>
+    <string name="mode_audio">صوت</string>
+    <string name="audio_format_mp3">MP3 (مضغوط)</string>
+    <string name="audio_format_opus">Opus (يُفضّل الأصلي)</string>
+    <string name="audio_format_wav">WAV (غير مضغوط)</string>
+    <string name="home_prefer_native_opus">تفضيل Opus الأصلي</string>
+    <string name="home_source_best_pcm">المصدر / الأفضل (PCM)</string>
+    <string name="home_mp3_help">صوت مضغوط مع معدل بت قابل للاختيار (128–320 كيلوبت/ث).</string>
+    <string name="home_opus_help">تفضيل نسخ بث Opus الأصلي عند توفره، مع التحويل عند عدم توفر مصدر Opus.</string>
+    <string name="home_wav_help">صوت المصدر غير المضغوط (PCM).</string>
+    <string name="home_prefer_60fps">تفضيل 60 إطارًا عند التوفّر</string>
+    <string name="home_playlist_range">قائمة تشغيل أو نطاق</string>
+    <string name="home_start">البداية</string>
+    <string name="home_end">النهاية</string>
+    <string name="home_download_subtitles">تنزيل الترجمات</string>
+    <string name="home_auto_captions">تضمين الترجمات التلقائية</string>
+    <string name="home_embed_subtitles">دمج الترجمات في الفيديو</string>
+    <string name="home_subtitle_language">نمط لغة الترجمة</string>
+    <string name="home_embed_metadata">دمج العنوان والبيانات الوصفية</string>
+    <string name="home_embed_thumbnail">دمج الصورة المصغرة في الصوت</string>
+    <string name="home_sponsorblock">إزالة مقاطع SponsorBlock</string>
+    <string name="home_sponsor_categories">تصنيفات SponsorBlock</string>
+    <string name="home_sponsor_categories_hint">أسماء التصنيفات مفصولة بفواصل</string>
+    <string name="home_trim_optional">قص اختياري (HH:MM:SS أو ثوانٍ)</string>
+    <string name="home_network_headers">الشبكة وترويسات HTTP</string>
+    <string name="home_referer">رابط Referer</string>
+    <string name="home_origin">رابط Origin</string>
+    <string name="home_custom_headers">ترويسات مخصصة (%1$d)</string>
+    <string name="home_add_header">+ إضافة ترويسة</string>
+    <string name="home_header_name">اسم الترويسة</string>
+    <string name="home_header_value">قيمة الترويسة</string>
+    <string name="home_header_value_redacted">القيمة (محجوبة)</string>
+    <string name="home_sensitive_header">ترويسة حساسة: تُحجب في السجلات وتقارير الأخطاء.</string>
+    <string name="home_download_location">مجلد الحفظ</string>
+    <string name="home_choose_location_body">اختر المكان الذي ستُحفظ فيه الملفات على جهازك.</string>
+    <string name="home_destination">الوجهة</string>
+    <string name="home_set_default">تعيين كافتراضي وعدم السؤال مجددًا</string>
+    <string name="error_enter_url">أدخل رابط http أو https كاملًا.</string>
+    <string name="error_playlist_start">يجب أن تكون بداية قائمة التشغيل 1 أو أكثر.</string>
+    <string name="error_playlist_end">يجب أن تكون نهاية قائمة التشغيل 1 أو أكثر.</string>
+    <string name="error_playlist_order">يجب أن تكون النهاية مساوية للبداية أو أكبر منها.</string>
+    <string name="error_trim_start">يجب أن تكون بداية القص بالثواني أو بصيغة HH:MM:SS.</string>
+    <string name="error_trim_end">يجب أن تكون نهاية القص بالثواني أو بصيغة HH:MM:SS.</string>
+    <string name="error_trim_order">يجب أن تكون نهاية القص بعد بدايته.</string>
+    <string name="error_invalid_header">ترويسة غير صالحة «%1$s»: %2$s</string>
+    <string name="error_invalid_header_value">قيمة غير صالحة للترويسة «%1$s»: %2$s</string>
+    <string name="error_could_not_add">تعذّرت إضافة التنزيل</string>
+
+    <!-- Queue / history -->
+    <string name="queue_title">قائمة الانتظار</string>
+    <string name="history_title">السجل</string>
+    <string name="queue_empty_title">قائمة الانتظار فارغة</string>
+    <string name="history_empty_title">لا يوجد سجل تنزيلات</string>
+    <string name="queue_empty_body">ستظهر الوسائط التي تضيفها هنا أثناء التنزيل.</string>
+    <string name="history_empty_body">ستظهر التنزيلات المكتملة والمنتهية هنا.</string>
+    <string name="queue_empty_message">قائمة انتظارك فارغة.</string>
+    <string name="history_empty_message">تظهر التنزيلات المكتملة والفاشلة هنا.</string>
+    <string name="untitled_download">تنزيل بدون عنوان</string>
+
+    <!-- Browser fallback overlay -->
+    <string name="fallback_capturing">جارٍ التقاط الوسائط (تم رصد %1$d بثًا)</string>
+    <string name="fallback_select_server">اختر خادمًا أو اضغط تشغيل لبدء بث الوسائط</string>
+    <string name="fallback_initializing">جارٍ تهيئة جلسة المتصفح البديلة...</string>
+
+    <!-- Failure guidance -->
+    <string name="fail_publishing_title">فشل التنزيل أثناء الحفظ</string>
+    <string name="fail_publishing_detail">تمت معالجة الوسائط، لكن تعذّر على النظام حفظ الملف النهائي.</string>
+    <string name="fail_browser_timeout_title">انتهت مهلة جلسة المتصفح</string>
+    <string name="fail_browser_timeout_detail">أعد محاولة جلسة المتصفح أو أغلقها بأمان.</string>
+    <string name="fail_unreachable_title">تعذّر الوصول إلى الموقع</string>
+    <string name="fail_unreachable_detail">تحقّق من الاتصال ثم أعد المحاولة.</string>
+    <string name="fail_no_format_title">تعذّر العثور على صيغة قابلة للتنزيل</string>
+    <string name="fail_no_format_detail">لم تُتَح الصفحة أي صيغة وسائط مدعومة وغير محمية بـ DRM.</string>
+    <string name="fail_signin_title">قد يلزم تسجيل الدخول</string>
+    <string name="fail_signin_detail">قد يتطلب المصدر جلسة متصفح موثّقة.</string>
+    <string name="fail_browser_closed_title">أُغلقت جلسة المتصفح</string>
+    <string name="fail_browser_closed_detail">لم تُسلَّم أي وسائط قابلة للتنزيل وغير محمية بـ DRM.</string>
+    <string name="fail_generic_title">فشل التنزيل</string>
+    <string name="fail_generic_detail">أعد المحاولة. تفاصيل الفشل محفوظة في «التشخيص» داخل الإعدادات.</string>
+
+    <!-- Time -->
+    <string name="eta_hours">%1$d:%2$02d:%3$02d متبقية</string>
+    <string name="eta_minutes">%1$d:%2$02d متبقية</string>
+
+    <!-- Configuration summary -->
+    <string name="config_readout">ملخص التنزيل</string>
+    <string name="config_video_line">فيديو · %1$s · 60 إطارًا %2$s</string>
+    <string name="config_on">مفعّل</string>
+    <string name="config_off">متوقف</string>
+    <string name="config_mp3_line">MP3 · %1$d كيلوبت/ث</string>
+    <string name="config_opus_line">Opus · أفضل نسخ أصلي</string>
+    <string name="config_wav_line">WAV · PCM غير مضغوط</string>
+    <string name="config_playlist">قائمة تشغيل</string>
+    <string name="config_playlist_range">قائمة تشغيل %1$s</string>
+    <string name="config_subtitles">ترجمات</string>
+    <string name="config_trim">القص مفعّل</string>
+    <string name="config_sponsorblock">SponsorBlock</string>
+
+    <!-- Settings -->
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_general">عام</string>
+    <string name="settings_download">التنزيل</string>
+    <string name="settings_save_folder">مجلد الحفظ</string>
+    <string name="settings_video">الفيديو</string>
+    <string name="settings_audio">الصوت</string>
+    <string name="settings_notifications">الإشعارات</string>
+    <string name="settings_updates">التحديثات</string>
+    <string name="settings_browser">المتصفح</string>
+    <string name="settings_privacy">الخصوصية</string>
+    <string name="settings_about">حول التطبيق</string>
+    <string name="settings_appearance">المظهر</string>
+    <string name="settings_components_updates">المكوّنات والتحديثات</string>
+    <string name="settings_components_body">مكوّنات محرك وتصفية تُدار باستقلالية.</string>
+    <string name="settings_browser_subsystems">أنظمة المتصفح</string>
+    <string name="settings_concurrency">التزامن</string>
+    <string name="settings_diagnostics">التشخيص</string>
+    <string name="settings_download_location">مجلد الحفظ</string>
+    <string name="settings_save_directly">ستُحفظ التنزيلات مباشرة في المجلد المحدد.</string>
+    <string name="settings_ask_each_time">سيُطلب منك اختيار مجلد لكل تنزيل.</string>
+    <string name="settings_theme_mode">وضع المظهر</string>
+    <string name="settings_amoled_black">أسود AMOLED</string>
+    <string name="settings_amoled_subtitle">استخدام خلفيات سوداء نقية عند تفعيل الوضع الداكن</string>
+    <string name="settings_font">الخط</string>
+    <string name="settings_theme_light">فاتح</string>
+    <string name="settings_theme_dark">داكن</string>
+    <string name="settings_font_vrka">خط SnapVRKA</string>
+    <string name="settings_font_system">خط النظام</string>
+    <string name="settings_save_use_selected">استخدام المحدد</string>
+    <string name="settings_save_ask">السؤال في كل مرة</string>
+    <string name="settings_channel_stable">مستقر</string>
+    <string name="settings_channel_nightly">ليلي</string>
+    <string name="settings_installed">المثبّت: %1$s</string>
+    <string name="settings_unknown">غير معروف</string>
+    <string name="settings_browser_engine">محرك المتصفح</string>
+    <string name="settings_browser_engine_subtitle">Mozilla GeckoView 153.0 (arm64-v8a)</string>
+    <string name="settings_ad_blocking">حجب الإعلانات والمتتبعات</string>
+    <string name="settings_media_detection">كشف الوسائط</string>
+    <string name="settings_media_detection_subtitle">اكتشاف HLS عبر Puemos</string>
+    <string name="settings_browser_session">جلسة المتصفح</string>
+    <string name="settings_browser_session_subtitle">ملفات تعريف الارتباط وبيانات المواقع وجلسات الدخول</string>
+    <string name="settings_clear_session">مسح الجلسة</string>
+    <string name="settings_clearing">جارٍ المسح...</string>
+    <string name="settings_clear_session_title">مسح جلسة المتصفح؟</string>
+    <string name="settings_clear_session_body">يزيل ملفات تعريف الارتباط وبيانات المواقع التي يستخدمها التحليل عبر المتصفح. لا يتأثر سجل التنزيلات أو إعدادات التطبيق.</string>
+    <string name="settings_session_cleared">تم مسح الجلسة بنجاح</string>
+    <string name="settings_session_clear_failed">تعذّر مسح الجلسة</string>
+    <string name="settings_concurrency_body">مهمة نشطة واحدة في كل مرة؛ تنتظر بقية المهام في قائمة الانتظار لتحسين الأداء ومنع ارتفاع الحرارة.</string>
+    <string name="settings_no_diagnostics">لا توجد سجلات تشخيص. تُسجَّل التشخيصات محليًا عند حدوث خطأ في التنزيل.</string>
+    <string name="settings_diagnostics_count">%1$d سجل</string>
+    <string name="settings_diagnostics_count_one">سجل واحد</string>
+    <string name="settings_stage">المرحلة: %1$s</string>
+    <string name="settings_quality">الجودة: %1$s</string>
+    <string name="settings_url">الرابط: %1$s</string>
+    <string name="settings_method">الطريقة: %1$s</string>
+    <string name="settings_log_tail">آخر السجل:</string>
+    <string name="settings_diagnostics_copied">تم نسخ التفاصيل إلى الحافظة</string>
+    <string name="settings_checking_updates">جارٍ التحقق من التحديثات...</string>
+    <string name="settings_updating_components">جارٍ تحديث المكوّنات...</string>
+    <string name="settings_check_all_updates">التحقق من كل التحديثات</string>
+    <string name="settings_status_ready">جاهز</string>
+    <string name="settings_status_checking">جارٍ التحقق</string>
+    <string name="settings_status_downloading">جارٍ التنزيل</string>
+    <string name="settings_status_verifying">جارٍ التحقق من السلامة</string>
+    <string name="settings_status_installing">جارٍ التثبيت</string>
+    <string name="settings_status_updating">جارٍ التحديث</string>
+    <string name="settings_status_updated">تم التحديث</string>
+    <string name="settings_status_failed">فشل</string>
+    <string name="settings_status_error">خطأ</string>
+    <string name="settings_status_bundled">مضمّن</string>
+    <string name="settings_status_active">مفعّل</string>
+    <string name="settings_updating_progress">جارٍ التحديث (%1$s)...</string>
+    <string name="settings_updated_to">تم التحديث بنجاح إلى v%1$s</string>
+    <string name="settings_update_failed">فشل التحديث</string>
+    <string name="settings_update_failed_detail">فشل التحديث: %1$s</string>
+    <string name="settings_update_cancelled">أُلغي التحديث</string>
+    <string name="settings_update_not_started">تعذّر بدء التحديث</string>
+    <string name="settings_worker_start_failed">تعذّر تشغيل مهمة الخلفية</string>
+    <string name="settings_starting_update">جارٍ بدء تحديث %1$s...</string>
+    <string name="settings_channel_switched">تم تبديل القناة إلى %1$s. تحقّق من التحديثات.</string>
+    <string name="settings_check_available">يتوفر الإصدار v%1$s</string>
+    <string name="settings_check_uptodate">SnapVRKA محدّث</string>
+    <string name="settings_check_uptodate_version">أنت على أحدث إصدار (v%1$s)</string>
+    <string name="settings_check_prompt">تحقّق من إصدارات SnapVRKA الجديدة على GitHub</string>
+    <string name="settings_checking">جارٍ التحقق...</string>
+    <string name="settings_rate_limit">تم بلوغ حد طلبات GitHub API. حاول لاحقًا.</string>
+    <string name="settings_network_error">خطأ في الشبكة أثناء التحقق من التحديثات.</string>
+    <string name="settings_unknown_error">خطأ غير معروف</string>
+    <string name="settings_network_timeout">انتهت مهلة الشبكة</string>
+    <string name="settings_repo_not_found">لم يُعثر على مستودع الإصدارات (HTTP 404)</string>
+    <string name="settings_http_error">أعاد GitHub الرمز HTTP %1$d</string>
+    <string name="settings_by">بواسطة MVRK · حقوق المشروع الأصلي محفوظة</string>
+
+    <!-- About -->
+    <string name="about_title">حول SnapVRKA</string>
+    <string name="about_description">تطبيق Android لتنزيل الفيديو والصوت.</string>
+    <string name="about_version">الإصدار %1$s</string>
+    <string name="about_license">هذا التطبيق مبني على مشروع VRKA-Android الأصلي وهو مُرخّص تحت GPL-3.0. حقوق المشروع الأصلي محفوظة.</string>
+    <string name="about_features">يعتمد التنزيل على yt-dlp و FFmpeg، مع تحليل احتياطي عبر GeckoView وحجب الإعلانات بواسطة uBlock Origin، واكتشاف البث بواسطة Puemos، ودعم HLS و DASH، إضافة إلى قائمة انتظار وتنزيلات في الخلفية وسجل كامل.</string>
+    <string name="about_third_party">إشعارات الأطراف الثالثة</string>
+
+    <!-- Updates / components -->
+    <string name="update_title">تحديث SnapVRKA</string>
+    <string name="update_available_title">يتوفر إصدار جديد</string>
+    <string name="update_download">تنزيل التحديث</string>
+    <string name="update_downloading">جارٍ تنزيل التحديث...</string>
+    <string name="update_ready">التحديث جاهز للتثبيت</string>
+    <string name="update_install">تثبيت</string>
+    <string name="update_later">لاحقًا</string>
+    <string name="update_failed">فشل تنزيل التحديث</string>
+    <string name="update_whats_new">الجديد</string>
+    <string name="update_component_title">تحديثات المكوّنات</string>
+    <string name="update_component_body">تتوفر تحديثات للمكوّنات. هل تريد تثبيتها الآن؟</string>
+    <string name="update_component_now">تحديث الآن</string>
+    <string name="update_component_skip">تخطٍّ</string>
+    <string name="update_verifying_apk">جارٍ التحقق من ملف APK...</string>
+    <string name="update_apk_invalid">ملف APK غير صالح أو غير مكتمل</string>
+
+    <!-- Quick download / share -->
+    <string name="quick_title">SnapVRKA</string>
+    <string name="quick_analysing">جارٍ تحليل الرابط...</string>
+    <string name="quick_fetching">جارٍ استخراج معلومات الفيديو...</string>
+    <string name="quick_reading_formats">جارٍ قراءة الجودات...</string>
+    <string name="quick_section_video">الفيديو</string>
+    <string name="quick_section_audio">الصوت فقط</string>
+    <string name="quick_download">تنزيل</string>
+    <string name="quick_no_formats">لا توجد جودات متاحة</string>
+    <string name="quick_size_unknown">الحجم غير معروف</string>
+    <string name="quick_size_estimated">حوالي %1$s</string>
+    <string name="quick_size_exact">%1$s</string>
+    <string name="quick_best_quality">أفضل جودة</string>
+    <string name="quick_video_quality">جودة الفيديو</string>
+    <string name="quick_audio_quality">جودة الصوت</string>
+    <string name="quick_format">الصيغة</string>
+    <string name="quick_size">الحجم</string>
+    <string name="quick_error_invalid_url">الرابط غير صالح</string>
+    <string name="quick_error_probe">تعذّر استخراج معلومات الوسائط</string>
+    <string name="quick_enqueued">أُضيف إلى قائمة الانتظار</string>
+    <string name="quick_open_app">فتح SnapVRKA</string>
+    <string name="quick_retry">إعادة المحاولة</string>
+    <string name="quick_duration">المدة: %1$s</string>
+    <string name="quick_audio_mp3">MP3 %1$d</string>
+    <string name="quick_audio_opus">Opus</string>
+    <string name="quick_audio_opus_native">Opus (أصلي)</string>
+    <string name="quick_share_label">تنزيل باستخدام SnapVRKA</string>
+
+    <!-- Size units -->
+    <string name="size_value_gb">%1$s جيجابايت</string>
+    <string name="size_value_mb">%1$s ميجابايت</string>
+    <string name="size_value_kb">%1$s كيلوبايت</string>
+    <string name="unit_bytes">بايت</string>
+    <string name="unit_kb">كيلوبايت</string>
+    <string name="unit_mb">ميجابايت</string>
+    <string name="unit_gb">جيجابايت</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">التنزيلات</string>
+    <string name="notification_channel_description">إشعارات تنزيل الفيديو والصوت</string>
+    <string name="notification_downloading">جارٍ تنزيل %1$s</string>
+    <string name="notification_done">اكتمل التنزيل</string>
+    <string name="notification_failed">فشل التنزيل</string>
+</resources>

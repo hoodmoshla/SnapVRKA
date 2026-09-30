@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -90,14 +91,14 @@ internal fun JobsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (onClear == null) "Queue" else "History",
+                text = stringResource(if (onClear == null) R.string.queue_title else R.string.history_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = VrkaTokens.TextPrimary,
             )
             if (onClear != null && jobs.isNotEmpty()) {
                 VrkaTextButton(
-                    text = "Clear history",
+                    text = stringResource(R.string.action_clear_history),
                     onClick = onClear,
                     color = VrkaTokens.TextSecondary,
                 )
@@ -118,21 +119,22 @@ internal fun JobsScreen(
                 ) {
                     androidx.compose.foundation.Image(
                         painter = androidx.compose.ui.res.painterResource(R.drawable.vrka_logo_512),
-                        contentDescription = "VRKA",
+                        contentDescription = stringResource(R.string.app_name),
                         contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                         modifier = Modifier.size(68.dp),
                     )
                     Text(
-                        text = if (onClear == null) "Queue is empty" else "No download history",
+                        text = stringResource(
+                            if (onClear == null) R.string.queue_empty_title else R.string.history_empty_title,
+                        ),
                         style = MaterialTheme.typography.titleLarge.copy(fontFamily = VrkaMonoFamily),
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
                     )
                     Text(
-                        text = if (onClear == null)
-                            "Media you enqueue will appear here while downloading."
-                        else
-                            "Completed and archived downloads will be listed here.",
+                        text = stringResource(
+                            if (onClear == null) R.string.queue_empty_body else R.string.history_empty_body,
+                        ),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -202,7 +204,7 @@ private fun JobCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = job.title.ifBlank { sourceLabel(job.request.url) },
+                    text = job.title.ifBlank { sourceLabel(job.request.url, stringResource(R.string.untitled_download)) },
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontFamily = VrkaMonoFamily,
                         fontWeight = FontWeight.Bold,
@@ -265,7 +267,7 @@ private fun JobCard(
                 )
             } else if (job.detail.isNotBlank()) {
                 Text(
-                    text = job.detail,
+                    text = localizedJobDetail(job),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                     color = VrkaTokens.TextSecondary,
                     modifier = Modifier.padding(top = 4.dp),
@@ -299,7 +301,7 @@ private fun JobCard(
                     Text(
                         text = listOfNotNull(
                             job.speed.takeIf(String::isNotBlank),
-                            job.etaSeconds?.let(::formatEtaCompact),
+                            job.etaSeconds?.let { formatEtaCompactLabel(it) },
                         ).joinToString(" • "),
                         fontFamily = VrkaMonoFamily,
                         fontSize = 11.sp,
@@ -331,7 +333,7 @@ private fun JobCard(
                         !job.state.isTerminal -> {
                             if (job.state == JobState.WAITING_FOR_USER && onChooseFolder != null) {
                                 VrkaOutlinedButton(
-                                    text = "Set Location",
+                                    text = stringResource(R.string.action_set_location),
                                     onClick = onChooseFolder,
                                     height = 32.dp,
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -339,14 +341,14 @@ private fun JobCard(
                             }
                             if (job.state == JobState.BROWSER_FALLBACK && onShowFallback != null) {
                                 VrkaOutlinedButton(
-                                    text = "Interact",
+                                    text = stringResource(R.string.action_interact),
                                     onClick = onShowFallback,
                                     height = 32.dp,
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 )
                             }
                             VrkaOutlinedButton(
-                                text = "Cancel",
+                                text = stringResource(R.string.action_cancel),
                                 onClick = onCancel,
                                 height = 32.dp,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -354,19 +356,19 @@ private fun JobCard(
                         }
                         job.state == JobState.DONE && job.outputUris.isNotEmpty() -> {
                             VrkaOutlinedButton(
-                                text = "Open",
+                                text = stringResource(R.string.action_open),
                                 onClick = { onOpen(job.outputUris.first()) },
                                 height = 32.dp,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             )
                             VrkaOutlinedButton(
-                                text = "Share",
+                                text = stringResource(R.string.action_share),
                                 onClick = { onShare(job.outputUris.first()) },
                                 height = 32.dp,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             )
                             VrkaTextButton(
-                                text = "Delete",
+                                text = stringResource(R.string.action_delete),
                                 onClick = onDelete,
                                 color = VrkaTokens.Destructive,
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -374,13 +376,13 @@ private fun JobCard(
                         }
                         else -> {
                             VrkaOutlinedButton(
-                                text = "Retry",
+                                text = stringResource(R.string.action_retry),
                                 onClick = onRetry,
                                 height = 32.dp,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             )
                             VrkaTextButton(
-                                text = "Remove",
+                                text = stringResource(R.string.action_remove),
                                 onClick = onDelete,
                                 color = VrkaTokens.Destructive,
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -402,6 +404,6 @@ private fun stateColor(state: JobState): Color = when (state) {
     else -> VrkaTokens.AccentLight
 }
 
-private fun sourceLabel(url: String): String =
-    runCatching { Uri.parse(url).host }.getOrNull().orEmpty().ifBlank { "Untitled download" }
+private fun sourceLabel(url: String, fallback: String): String =
+    runCatching { Uri.parse(url).host }.getOrNull().orEmpty().ifBlank { fallback }
 

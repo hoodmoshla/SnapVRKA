@@ -16,6 +16,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VRKA-Android"
+rootProject.name = "SnapVRKA"
 include(":app")
 

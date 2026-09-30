@@ -33,15 +33,17 @@ extensions.configure<ApplicationExtension> {
     }
 
     defaultConfig {
-        applicationId = "com.mvrk.vrka"
+        // SnapVRKA application identity. The internal namespace intentionally stays
+        // "com.mvrk.vrka" to avoid a risky package-wide refactor of the existing engine.
+        applicationId = "com.hoodmoshla.snapvrka"
         minSdk {
             version = release(26)
         }
         targetSdk {
             version = release(36)
         }
-        versionCode = 40503
-        versionName = "4.5.3"
+        versionCode = 10000
+        versionName = "1.0.0"
 
         ndk {
             abiFilters += "arm64-v8a"

@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -19,18 +20,21 @@ class SaveLocationTest {
     }
 
     @Test
-    fun saveLocationModeLabelsMatchExpectedDesign() {
-        assertEquals("Use selected", SaveLocationMode.REMEMBER_LOCATION.label)
-        assertEquals("Ask every time", SaveLocationMode.ASK_EVERY_TIME.label)
-        assertEquals("Opus (prefer native)", AudioFormat.OPUS.label)
+    fun saveLocationModeLabelsAreLocalizedArabic() {
+        // Labels are Arabic resources; the enum exposes  ids that must resolve to distinct strings.
+        assertTrue(SaveLocationMode.REMEMBER_LOCATION.labelRes != 0)
+        assertTrue(SaveLocationMode.ASK_EVERY_TIME.labelRes != 0)
+        assertTrue(SaveLocationMode.REMEMBER_LOCATION.labelRes != SaveLocationMode.ASK_EVERY_TIME.labelRes)
+        assertTrue(AudioFormat.OPUS.labelRes != 0)
+        assertTrue(VideoQuality.P1080.labelRes != 0)
     }
 
     @Test
     fun formatDisplayPathReturnsCleanUserFacingPaths() {
-        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(null))
-        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(""))
+        assertEquals("Downloads/SnapVRKA", OutputPublisher.formatDisplayPath(null))
+        assertEquals("Downloads/SnapVRKA", OutputPublisher.formatDisplayPath(""))
         assertEquals(
-            "Download/VRKA",
+            "Download/SnapVRKA",
             OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FVRKA"),
         )
         assertEquals(

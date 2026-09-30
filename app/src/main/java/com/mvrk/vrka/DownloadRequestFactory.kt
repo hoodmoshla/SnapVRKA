@@ -64,7 +64,7 @@ internal object DownloadRequestFactory {
             }
 
             if (options.mode == MediaMode.AUDIO) {
-                val format = when (options.audioFormat) {
+                val format = options.formatSelector?.takeIf { it.isNotBlank() } ?: when (options.audioFormat) {
                     AudioFormat.OPUS -> "bestaudio[acodec^=opus]/bestaudio/best"
                     else -> "bestaudio/best"
                 }
@@ -80,7 +80,8 @@ internal object DownloadRequestFactory {
                 val format = if (options.resolvedMediaUrl != null) {
                     "bestvideo+bestaudio/best"
                 } else {
-                    buildVideoFormat(options.quality.height, options.prefer60Fps)
+                    options.formatSelector?.takeIf { it.isNotBlank() }
+                        ?: buildVideoFormat(options.quality.height, options.prefer60Fps)
                 }
                 addOption("-f", format)
                 if (options.prefer60Fps) {

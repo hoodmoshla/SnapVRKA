@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +59,7 @@ internal fun SettingsScreen(
                 is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> {
                     Toast.makeText(
                         context,
-                        "You're on the latest version (v${BuildConfig.VERSION_NAME})",
+                        context.getString(R.string.settings_check_uptodate_version, BuildConfig.VERSION_NAME),
                         Toast.LENGTH_SHORT,
                     ).show()
                     manualCheckRequested = false
@@ -97,16 +98,16 @@ internal fun SettingsScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
         Text(
-            "Settings",
+            stringResource(R.string.settings_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = VrkaTokens.TextPrimary,
         )
 
-        SettingsHeading("Download Location")
+        SettingsHeading(stringResource(R.string.settings_save_folder))
         VrkaSectionContainer {
             VrkaSettingRow(
-                title = "Destination",
+                title = stringResource(R.string.home_destination),
                 subtitle = OutputPublisher.formatDisplayPath(settings.outputTreeUri),
                 isSubtitleMono = true,
             ) {
@@ -115,13 +116,13 @@ internal fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     VrkaOutlinedButton(
-                        text = "Change",
+                        text = stringResource(R.string.action_change),
                         onClick = { folderPicker.launch(null) },
                         height = 34.dp,
                     )
                     if (settings.outputTreeUri.isNotBlank()) {
                         VrkaTextButton(
-                            text = "Reset",
+                            text = stringResource(R.string.action_reset),
                             onClick = { scope.launch { repository.setOutputTree("") } },
                         )
                     }
@@ -136,15 +137,15 @@ internal fun SettingsScreen(
                 items = SaveLocationMode.entries,
                 selectedItem = settings.saveLocationMode,
                 onItemSelected = { mode -> scope.launch { repository.setSaveLocationMode(mode) } },
-                label = { it.label },
+                label = { stringResource(it.labelRes) },
                 isMonospace = true,
             )
 
             Text(
                 text = if (settings.saveLocationMode == SaveLocationMode.REMEMBER_LOCATION) {
-                    "Downloads will be saved directly to the selected location."
+                    stringResource(R.string.settings_save_directly)
                 } else {
-                    "You will be prompted to choose a location for each download."
+                    stringResource(R.string.settings_ask_each_time)
                 },
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                 color = VrkaTokens.TextTertiary,
@@ -152,10 +153,10 @@ internal fun SettingsScreen(
             )
         }
 
-        SettingsHeading("Appearance")
+        SettingsHeading(stringResource(R.string.settings_appearance))
         VrkaSectionContainer {
             Text(
-                "Theme Mode",
+                stringResource(R.string.settings_theme_mode),
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                 fontWeight = FontWeight.SemiBold,
                 color = VrkaTokens.TextPrimary,
@@ -165,7 +166,7 @@ internal fun SettingsScreen(
                 items = ThemeMode.entries,
                 selectedItem = settings.themeMode,
                 onItemSelected = { mode -> scope.launch { repository.setThemeMode(mode) } },
-                label = { it.label },
+                label = { stringResource(it.labelRes) },
                 isMonospace = true,
             )
 
@@ -173,8 +174,8 @@ internal fun SettingsScreen(
             VrkaDivider()
 
             VrkaSettingRow(
-                title = "AMOLED Black",
-                subtitle = "Use pure black backgrounds when Dark mode is active",
+                title = stringResource(R.string.settings_amoled_black),
+                subtitle = stringResource(R.string.settings_amoled_subtitle),
             ) {
                 Switch(
                     checked = settings.amoled,
@@ -191,7 +192,7 @@ internal fun SettingsScreen(
             VrkaDivider()
 
             Text(
-                "Font",
+                stringResource(R.string.settings_font),
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = VrkaMonoFamily),
                 fontWeight = FontWeight.SemiBold,
                 color = VrkaTokens.TextPrimary,
@@ -201,14 +202,14 @@ internal fun SettingsScreen(
                 items = FontPreference.entries,
                 selectedItem = settings.fontPreference,
                 onItemSelected = { font -> scope.launch { repository.setFontPreference(font) } },
-                label = { it.label },
+                label = { stringResource(it.labelRes) },
                 isMonospace = true,
             )
         }
 
-        SettingsHeading("Components & Updates")
+        SettingsHeading(stringResource(R.string.settings_components_updates))
         Text(
-            "Independently managed runtime and filter components.",
+            stringResource(R.string.settings_components_body),
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
             color = VrkaTokens.TextSecondary,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
@@ -221,13 +222,13 @@ internal fun SettingsScreen(
                 if (index > 0) VrkaDivider()
                 val cleanInstalled = ComponentUpdateManager.cleanVersionString(comp.installedVersion)
                 val displayVer = when {
-                    cleanInstalled.equals("Unknown", ignoreCase = true) || cleanInstalled.isBlank() -> "Unknown"
+                    cleanInstalled.equals("Unknown", ignoreCase = true) || cleanInstalled.isBlank() -> stringResource(R.string.settings_unknown)
                     cleanInstalled.startsWith("v") -> cleanInstalled
                     else -> "v$cleanInstalled"
                 }
                 VrkaSettingRow(
                     title = comp.name,
-                    subtitle = "Installed: $displayVer",
+                    subtitle = stringResource(R.string.settings_installed, displayVer),
                     isSubtitleMono = true,
                 ) {
                     Row(
@@ -237,23 +238,23 @@ internal fun SettingsScreen(
                         when {
                             comp.isUpdating -> {
                                 val updateLabel = when (comp.updateState) {
-                                    ComponentUpdateState.DOWNLOADING -> "Downloading"
-                                    ComponentUpdateState.VERIFYING -> "Verifying"
-                                    ComponentUpdateState.INSTALLING -> "Installing"
-                                    else -> "Updating"
+                                    ComponentUpdateState.DOWNLOADING -> stringResource(R.string.settings_status_downloading)
+                                    ComponentUpdateState.VERIFYING -> stringResource(R.string.settings_status_verifying)
+                                    ComponentUpdateState.INSTALLING -> stringResource(R.string.settings_status_installing)
+                                    else -> stringResource(R.string.settings_status_updating)
                                 }
                                 VrkaStatusBadge(updateLabel, VrkaTokens.Warning, isMonospace = true)
                             }
                             comp.isChecking -> {
-                                VrkaStatusBadge("Checking", VrkaTokens.AccentLight, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_checking), VrkaTokens.AccentLight, isMonospace = true)
                             }
                             comp.updateState == ComponentUpdateState.UPDATE_SUCCESS -> {
-                                VrkaStatusBadge("Updated", VrkaTokens.Success, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_updated), VrkaTokens.Success, isMonospace = true)
                             }
                             comp.updateState == ComponentUpdateState.UPDATE_FAILED -> {
-                                VrkaStatusBadge("Failed", VrkaTokens.Error, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_failed), VrkaTokens.Error, isMonospace = true)
                                 VrkaOutlinedButton(
-                                    text = "Retry",
+                                    text = stringResource(R.string.action_retry),
                                     onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
                                     height = 32.dp,
                                 )
@@ -261,24 +262,24 @@ internal fun SettingsScreen(
                             comp.checkState == ComponentCheckState.UPDATE_AVAILABLE -> {
                                 VrkaStatusBadge("v${comp.latestVersion}", VrkaTokens.AccentLight, isMonospace = true)
                                 VrkaOutlinedButton(
-                                    text = "Update",
+                                    text = stringResource(R.string.action_update),
                                     onClick = { updateManager.applyUpdate(comp.id, settings.updatePreference) },
                                     height = 32.dp,
                                 )
                             }
                             comp.checkState == ComponentCheckState.CHECK_FAILED -> {
-                                VrkaStatusBadge("Error", VrkaTokens.Error, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_error), VrkaTokens.Error, isMonospace = true)
                                 VrkaOutlinedButton(
-                                    text = "Retry",
+                                    text = stringResource(R.string.action_retry),
                                     onClick = { updateManager.checkUpdate(comp.id, settings.updatePreference) },
                                     height = 32.dp,
                                 )
                             }
                             comp.checkState == ComponentCheckState.UP_TO_DATE -> {
-                                VrkaStatusBadge("Ready", VrkaTokens.Success, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_ready), VrkaTokens.Success, isMonospace = true)
                             }
                             else -> {
-                                VrkaStatusBadge("Ready", VrkaTokens.Success, isMonospace = true)
+                                VrkaStatusBadge(stringResource(R.string.settings_status_ready), VrkaTokens.Success, isMonospace = true)
                             }
                         }
                     }
@@ -299,9 +300,9 @@ internal fun SettingsScreen(
                 componentMap.values.any { it.isChecking || it.isUpdating }
 
             val checkButtonText = when {
-                batchState == BatchOperationState.UPDATING || componentMap.values.any { it.isUpdating } -> "Updating components..."
-                batchState == BatchOperationState.CHECKING || componentMap.values.any { it.isChecking } -> "Checking updates..."
-                else -> "Check All Updates"
+                batchState == BatchOperationState.UPDATING || componentMap.values.any { it.isUpdating } -> stringResource(R.string.settings_updating_components)
+                batchState == BatchOperationState.CHECKING || componentMap.values.any { it.isChecking } -> stringResource(R.string.settings_checking_updates)
+                else -> stringResource(R.string.settings_check_all_updates)
             }
 
             VrkaOutlinedButton(
@@ -340,7 +341,7 @@ internal fun SettingsScreen(
                                     updateManager.onChannelChanged(item)
                                 }
                             },
-                            label = item.label,
+                            label = stringResource(item.labelRes),
                             isMonospace = true,
                         )
                     }
@@ -348,31 +349,31 @@ internal fun SettingsScreen(
             }
         }
 
-        SettingsHeading("Browser Subsystems")
+        SettingsHeading(stringResource(R.string.settings_browser_subsystems))
         VrkaSectionContainer {
             VrkaSettingRow(
-                title = "Browser Engine",
-                subtitle = "Mozilla GeckoView 153.0 (arm64-v8a)",
+                title = stringResource(R.string.settings_browser_engine),
+                subtitle = stringResource(R.string.settings_browser_engine_subtitle),
             ) {
-                VrkaStatusBadge("Bundled", VrkaTokens.AccentLight, isMonospace = true)
+                VrkaStatusBadge(stringResource(R.string.settings_status_bundled), VrkaTokens.AccentLight, isMonospace = true)
             }
 
             VrkaDivider()
 
             VrkaSettingRow(
-                title = "Ad & Tracker Blocking",
+                title = stringResource(R.string.settings_ad_blocking),
                 subtitle = "uBlock Origin",
             ) {
-                VrkaStatusBadge("Active", VrkaTokens.Success, isMonospace = true)
+                VrkaStatusBadge(stringResource(R.string.settings_status_active), VrkaTokens.Success, isMonospace = true)
             }
 
             VrkaDivider()
 
             VrkaSettingRow(
-                title = "Media Detection",
-                subtitle = "Puemos HLS Discovery",
+                title = stringResource(R.string.settings_media_detection),
+                subtitle = stringResource(R.string.settings_media_detection_subtitle),
             ) {
-                VrkaStatusBadge("Active", VrkaTokens.Success, isMonospace = true)
+                VrkaStatusBadge(stringResource(R.string.settings_status_active), VrkaTokens.Success, isMonospace = true)
             }
 
             VrkaDivider()
@@ -382,11 +383,11 @@ internal fun SettingsScreen(
             var clearSessionMessage by remember { mutableStateOf<String?>(null) }
 
             VrkaSettingRow(
-                title = "Browser Session",
-                subtitle = clearSessionMessage ?: "Cookies, cached storage, and active auth sessions",
+                title = stringResource(R.string.settings_browser_session),
+                subtitle = clearSessionMessage ?: stringResource(R.string.settings_browser_session_subtitle),
             ) {
                 VrkaOutlinedButton(
-                    text = if (isClearingSession) "Clearing..." else "Clear Session",
+                    text = if (isClearingSession) stringResource(R.string.settings_clearing) else stringResource(R.string.settings_clear_session),
                     onClick = { showClearDialog = true },
                     enabled = !isClearingSession,
                     height = 32.dp,
@@ -398,7 +399,7 @@ internal fun SettingsScreen(
                     onDismissRequest = { showClearDialog = false },
                     title = {
                         Text(
-                            "Clear Browser Session?",
+                            stringResource(R.string.settings_clear_session_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = VrkaTokens.TextPrimary,
@@ -406,7 +407,7 @@ internal fun SettingsScreen(
                     },
                     text = {
                         Text(
-                            "Removes cookies and site data used by the browser fallback. Download history and app settings are not affected.",
+                            stringResource(R.string.settings_clear_session_body),
                             style = MaterialTheme.typography.bodyMedium,
                             color = VrkaTokens.TextSecondary,
                         )
@@ -419,16 +420,16 @@ internal fun SettingsScreen(
                                 scope.launch {
                                     val success = GeckoRuntimeManager.getInstance(context).clearBrowserSession()
                                     isClearingSession = false
-                                    clearSessionMessage = if (success) "Session cleared successfully" else "Failed to clear session"
+                                    clearSessionMessage = if (success) context.getString(R.string.settings_session_cleared) else context.getString(R.string.settings_session_clear_failed)
                                 }
                             }
                         ) {
-                            Text("Clear", color = VrkaTokens.Accent)
+                            Text(stringResource(R.string.action_clear), color = VrkaTokens.Accent)
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showClearDialog = false }) {
-                            Text("Cancel", color = VrkaTokens.TextSecondary)
+                            Text(stringResource(R.string.action_cancel), color = VrkaTokens.TextSecondary)
                         }
                     },
                     containerColor = VrkaTokens.SurfaceCard,
@@ -436,10 +437,10 @@ internal fun SettingsScreen(
             }
         }
 
-        SettingsHeading("Concurrency")
+        SettingsHeading(stringResource(R.string.settings_concurrency))
         VrkaSectionContainer {
             Text(
-                "One active job at a time; additional jobs wait in the queue to optimize performance and prevent thermal throttling.",
+                stringResource(R.string.settings_concurrency_body),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = VrkaMonoFamily,
                     lineHeight = 18.sp,
@@ -449,14 +450,14 @@ internal fun SettingsScreen(
             )
         }
 
-        SettingsHeading("Diagnostics")
+        SettingsHeading(stringResource(R.string.settings_diagnostics))
         val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
         var expandedDiagnosticId by remember { mutableStateOf<String?>(null) }
 
         VrkaSectionContainer {
             if (diagnostics.isEmpty()) {
                 Text(
-                    "No diagnostic entries recorded. Diagnostic logs are captured locally when a download encounters an error.",
+                    stringResource(R.string.settings_no_diagnostics),
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = VrkaMonoFamily,
                         lineHeight = 18.sp,
@@ -473,12 +474,12 @@ internal fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "${diagnostics.size} recorded ${if (diagnostics.size == 1) "failure" else "failures"}",
+                        if (diagnostics.size == 1) stringResource(R.string.settings_diagnostics_count_one) else stringResource(R.string.settings_diagnostics_count, diagnostics.size),
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextSecondary,
                     )
                     VrkaOutlinedButton(
-                        text = "Clear All",
+                        text = stringResource(R.string.action_clear_all),
                         onClick = onClearDiagnostics,
                         height = 30.dp,
                     )
@@ -526,13 +527,13 @@ internal fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "Stage: ${entry.stage}",
+                                text = stringResource(R.string.settings_stage, entry.stage),
                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
                                 color = VrkaTokens.AccentLight,
                             )
                             if (entry.quality.isNotBlank()) {
                                 Text(
-                                    text = "• Quality: ${entry.quality}",
+                                    text = "• " + stringResource(R.string.settings_quality, entry.quality),
                                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
                                     color = VrkaTokens.TextSecondary,
                                 )
@@ -556,7 +557,7 @@ internal fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             VrkaOutlinedButton(
-                                text = if (isExpanded) "Hide Details" else "View Details",
+                                text = stringResource(if (isExpanded) R.string.action_hide_details else R.string.action_view_details),
                                 onClick = {
                                     expandedDiagnosticId = if (isExpanded) null else entry.id
                                 },
@@ -564,12 +565,12 @@ internal fun SettingsScreen(
                             )
 
                             VrkaOutlinedButton(
-                                text = "Copy Details",
+                                text = stringResource(R.string.action_copy_details),
                                 onClick = {
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entry.toFormattedString()))
                                     Toast.makeText(
                                         context,
-                                        "Diagnostic details copied to clipboard",
+                                        context.getString(R.string.settings_diagnostics_copied),
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 },
@@ -588,7 +589,7 @@ internal fun SettingsScreen(
                                     modifier = Modifier.padding(10.dp),
                                 ) {
                                     Text(
-                                        text = "URL: ${entry.url}",
+                                        text = stringResource(R.string.settings_url, entry.url),
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontFamily = VrkaMonoFamily,
                                             fontSize = 11.sp,
@@ -597,7 +598,7 @@ internal fun SettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Method: ${entry.acquisitionMethod}",
+                                        text = stringResource(R.string.settings_method, entry.acquisitionMethod),
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontFamily = VrkaMonoFamily,
                                             fontSize = 11.sp,
@@ -607,7 +608,7 @@ internal fun SettingsScreen(
                                     if (entry.detail.isNotBlank()) {
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = "Log Tail:",
+                                            text = stringResource(R.string.settings_log_tail),
                                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
                                             color = VrkaTokens.TextTertiary,
                                         )
@@ -630,7 +631,7 @@ internal fun SettingsScreen(
             }
         }
 
-        SettingsHeading("About")
+        SettingsHeading(stringResource(R.string.settings_about))
         val uriHandler = LocalUriHandler.current
         VrkaSectionContainer(
             modifier = Modifier.fillMaxWidth(),
@@ -647,7 +648,7 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "VRKA v${BuildConfig.VERSION_NAME}",
+                        text = stringResource(R.string.app_name) + " v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,
@@ -657,11 +658,45 @@ internal fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "By MVRK",
+                        text = stringResource(R.string.settings_by),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = VrkaMonoFamily,
                         ),
                         color = VrkaTokens.TextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.about_description),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                        ),
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                        ),
+                        color = VrkaTokens.TextTertiary,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.about_features),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            lineHeight = 18.sp,
+                        ),
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.about_license),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            lineHeight = 18.sp,
+                        ),
+                        color = VrkaTokens.TextTertiary,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -673,14 +708,14 @@ internal fun SettingsScreen(
                         ),
                         color = VrkaTokens.Accent,
                         modifier = Modifier.clickable {
-                            uriHandler.openUri("https://github.com/MaverickRox/VRKA-Android")
+                            uriHandler.openUri("https://github.com/hoodmoshla/SnapVRKA")
                         },
                     )
                 }
 
                 androidx.compose.foundation.Image(
                     painter = painterResource(R.drawable.vrka_logo_512),
-                    contentDescription = "VRKA Logo",
+                    contentDescription = stringResource(R.string.app_name),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                     modifier = Modifier.size(72.dp),
                 )
@@ -691,18 +726,18 @@ internal fun SettingsScreen(
             Spacer(modifier = Modifier.height(4.dp))
 
             VrkaSettingRow(
-                title = "App Updates",
+                title = stringResource(R.string.settings_updates),
                 subtitle = when (val state = appUpdateState) {
-                    is com.mvrk.vrka.update.AppUpdateCheckState.Checking -> "Checking for updates..."
-                    is com.mvrk.vrka.update.AppUpdateCheckState.UpdateAvailable -> "v${state.release.version} available"
-                    is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> "VRKA is up to date"
+                    is com.mvrk.vrka.update.AppUpdateCheckState.Checking -> stringResource(R.string.settings_checking_updates)
+                    is com.mvrk.vrka.update.AppUpdateCheckState.UpdateAvailable -> stringResource(R.string.settings_check_available, state.release.version.toString())
+                    is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> stringResource(R.string.settings_check_uptodate)
                     is com.mvrk.vrka.update.AppUpdateCheckState.Error -> state.message
-                    else -> "Check GitHub for new releases"
+                    else -> stringResource(R.string.settings_check_prompt)
                 },
                 isSubtitleMono = true,
             ) {
                 VrkaOutlinedButton(
-                    text = if (appUpdateState is com.mvrk.vrka.update.AppUpdateCheckState.Checking) "Checking..." else "Check for Updates",
+                    text = if (appUpdateState is com.mvrk.vrka.update.AppUpdateCheckState.Checking) stringResource(R.string.settings_checking) else stringResource(R.string.action_check_updates),
                     onClick = {
                         manualCheckRequested = true
                         appUpdateManager.checkForUpdate(isManual = true)

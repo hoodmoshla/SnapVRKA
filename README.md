@@ -1,287 +1,122 @@
-<div align="center">
-  <img src="docs/assets/vrka-wolf-256.png" width="96" height="96" alt="VRKA Logo" />
-  <h1>VRKA Android</h1>
-  <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
+# SnapVRKA
 
-  <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><img src="https://img.shields.io/badge/release-v4.5.3-8B5CF6?style=flat-square" alt="Release" /></a>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases"><img src="https://img.shields.io/badge/platform-Android%208.0+%20%7C%20arm64--v8a-blue?style=flat-square" alt="Platform" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square" alt="License" /></a>
-    <a href="https://github.com/MaverickRox/VRKA"><img src="https://img.shields.io/badge/origin-VRKA%20Desktop-purple?style=flat-square" alt="Desktop Origin" /></a>
-    <a href="https://github.com/MaverickRox/VRKA-Android/issues"><img src="https://img.shields.io/github/issues/MaverickRox/VRKA-Android?style=flat-square" alt="Issues" /></a>
-  </p>
+تطبيق Android لتنزيل الفيديو والصوت باستخدام yt-dlp وFFmpeg، مع مشاركة سريعة واختيار الجودة وتنزيل الصوت فقط، بالإضافة إلى Browser Fallback للمحتوى الذي يحتاج إلى تحليل عبر المتصفح.
 
-  <p>
-    <a href="https://github.com/MaverickRox/VRKA-Android/releases/latest"><b>Download APK (v4.5.3)</b></a> •
-    <a href="#screenshots">Screenshots</a> •
-    <a href="#architecture">Architecture</a> •
-    <a href="#build-instructions">Build Guide</a> •
-    <a href="#release-signing--continuity">Signing Protocol</a> •
-    <a href="SECURITY.md">Security</a>
-  </p>
-</div>
-
-<br />
-
-<div align="center">
-  <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
-</div>
+> SnapVRKA مبني على محرك VRKA الأصلي (GPL-3.0) مع الحفاظ على كل أنظمة التنزيل القوية الموجودة، وإضافة واجهة عربية كاملة وRTL ومشاركة سريعة.
 
 ---
 
-## Origin
+## المزايا
 
-> [!NOTE]
-> VRKA Android is the Android companion of the desktop media downloader [**VRKA**](https://github.com/MaverickRox/VRKA) by [MaverickRox](https://github.com/MaverickRox).
->
-> - **Desktop Source Repository**: [https://github.com/MaverickRox/VRKA](https://github.com/MaverickRox/VRKA)
-> - **Android Port Repository**: [https://github.com/MaverickRox/VRKA-Android](https://github.com/MaverickRox/VRKA-Android)
-
----
-
-## Overview
-
-**VRKA Android** brings the media extraction and browser fallback architecture of VRKA Desktop to mobile devices. Built natively with **Jetpack Compose**, **Kotlin Coroutines**, and **Android 16** readiness, it delivers direct media processing powered by `yt-dlp` and `FFmpeg`, combined with an isolated Mozilla **GeckoView** browser fallback engine with integrated **uBlock Origin** content filtering and **Puemos** HLS/DASH packet inspection.
-
-Designed for local, on-device processing without an application analytics service, featuring an AMOLED-optimized Liquid Glass interface.
-
----
-
-## Screenshots
-
-<div align="center">
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/download-dark.png" width="220" alt="Download Screen (Dark Mode)" /><br />
-      <b>Download Interface</b><br />
-      <sub>Format, resolution & codec selection</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/queue-dark.png" width="220" alt="Queue Screen" /><br />
-      <b>Task Queue</b><br />
-      <sub>Sequential single-flight queue</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/history-dark.png" width="220" alt="History Screen" /><br />
-      <b>Download History</b><br />
-      <sub>Archived tasks & media files</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/settings-dark.png" width="220" alt="Settings Screen" /><br />
-      <b>Settings & Runtime</b><br />
-      <sub>Component versions & theme toggle</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/browser-subsystems-dark.png" width="220" alt="Browser Subsystems (GeckoView, uBlock Origin, Puemos)" /><br />
-      <b>Browser Subsystems</b><br />
-      <sub>Isolated browser runtime, ad filtering & stream detection status</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="docs/screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
-      <b>Light Mode</b><br />
-      <sub>Adaptive high-contrast light theme</sub>
-    </td>
-  </tr>
-</table>
-</div>
+- **واجهة عربية بالكامل** مع دعم RTL وتخطيط mirrored صحيح.
+- **المشاركة السريعة** من أي تطبيق عبر Android Share Sheet (`ACTION_SEND`) أو فتح الروابط (`ACTION_VIEW`).
+- **Quick Download Popup**: نافذة سفلية سريعة تُظهر العنوان والصورة المصغرة والجودات بدون فتح الشاشة الرئيسية.
+- **اختيار الجودة**: تُعرض الجودات الموجودة فعليًا فقط (2160p / 1440p / 1080p / 720p / 480p …).
+- **عرض الحجم الحقيقي/التقريبي**: يُستخدم `filesize` ثم `filesize_approx` ثم تقدير من bitrate × المدة، ويظهر التقدير دائمًا بصيغة «حوالي … ميجابايت».
+- **تنزيل الصوت فقط**: MP3 320 / MP3 192 / MP3 128 / Opus مع تفضيل نسخ بث Opus الأصلي عند توفره.
+- **yt-dlp** كمحرك التنزيل الأساسي مع تحديث ذاتي وتحقق من السلامة.
+- **FFmpeg** للدمج والتحويل واستخراج الصوت.
+- **GeckoView** كمحرك متصفح احتياطي (Browser Fallback) عند فشل الاستخراج المباشر.
+- **uBlock Origin** و**Puemos** لتقليل الإعلانات واكتشاف بث HLS/DASH.
+- **دعم HLS و DASH** عبر Gecko transport مع التنزيل المتوازي للمقاطع.
+- **قائمة انتظار (Queue)** بمهمة نشطة واحدة في كل مرة.
+- **Background Downloads** عبر Foreground Service وإشعارات الحالة.
+- **History** كامل مع إعادة المحاولة والفتح والمشاركة والحذف.
+- **Auto Updates**: تحديثات التطبيق من إصدارات GitHub الرسمية لـ SnapVRKA مع تحقق HTTPS ومطابقة اسم حزمة APK.
 
 ---
 
-## Features
+## البنية
 
-- **Direct Extraction & Download**: Powered by `yt-dlp` and `FFmpeg` (`arm64-v8a`), supporting video/audio stream extraction where provided by the source, resolution selection (Best, 4K, 1440p, 1080p, 720p, etc.), 60 FPS preference, subtitle embedding, and audio extraction (MP3 with 128–320 kbps selectable bitrate, Opus with prefer native stream-copy remuxing and fallback transcode, and uncompressed 16-bit PCM WAV).
-- **Custom HTTP Headers & Injection Protection**: Network customization with dedicated `Referer` and `Origin` parameters and user-defined HTTP headers validated against RFC 7230 token specifications and CRLF injection rejection.
-- **Sensitive Header Redaction**: Multi-tier data protection masking sensitive authorization tokens, cookies, and secret headers (`[REDACTED]`) across logs, crash diagnostics, on-device stores, and UI cards.
-- **Dynamic Font Preference**: User-toggleable application typography supporting the signature monospace `VRKA Font` (Space Mono) and clean `System Font` (Roboto / device default) with persistent DataStore configuration.
-- **Download Location Modes**: Clear destination control supporting "Use selected" (defaulting to Downloads/VRKA with persistent directory permissions) or "Ask every time" (modal confirmation before queuing).
-- **Background Orchestration**: Foreground `DownloadService` with atomic `JobStore` persistence, notification progress tracking, pause/resume, and sequential queue execution.
-- **Passive Browser Fallback**: An embedded Mozilla `GeckoView` session automatically activates when direct extraction encounters anti-bot challenges or client-side player scripts.
-- **Integrated Content Filtering**: Bundled `uBlock Origin` WebExtension filters network requests to suppress intrusive ads and tracking scripts during fallback stream observation.
-- **Passive Stream Discovery**: The integrated `Puemos` WebExtension intercepts network traffic to observe and rank media manifests (`.m3u8` playlists, `.mpd` DASH manifests, direct segments).
-- **Local On-Device Diagnostics**: On-device diagnostic failure logging in Settings with stage attribution, terminal trace viewer, secret-sanitized reporting, and one-tap clipboard export.
-- **In-App Component Updates**: VRKA checks for component updates in the background. `yt-dlp` updates are verified with upstream OpenPGP signatures, while `uBlock Origin` and `Puemos` are updated directly from signed Firefox XPIs. Operations run through WorkManager to survive app backgrounding.
-- **In-App Application Self-Update**: Secure in-app update checker querying GitHub Releases with a 24-hour rate limit gate, manual checks from Settings, semantic version comparison, APK asset verification (`VRKA-Android-vX.Y.Z.apk`), HTTPS redirect validation, and installation via Android FileProvider.
-- **Browser Session Clearing**: Dedicated storage clearing for the GeckoView fallback runtime under Settings to purge cached cookies and site data without affecting application history or preferences.
-- **Liquid Glass Design System**: Floating capsule navigation with hardware-accelerated `RenderEffect` backdrop blur across AMOLED Black and Light modes.
+| المسار | الوصف |
+| --- | --- |
+| `app/src/main/java/com/mvrk/vrka/VrkaDownloadManager.kt` | مدير التنزيل (قائمة الانتظار، المحاولات، التصنيف، fallback) |
+| `app/src/main/java/com/mvrk/vrka/DownloadRequestFactory.kt` | بناء أوامر yt-dlp |
+| `app/src/main/java/com/mvrk/vrka/DownloadService.kt` | Foreground Service والإشعارات |
+| `app/src/main/java/com/mvrk/vrka/JobStore.kt` | تخزين المهام ذريًا |
+| `app/src/main/java/com/mvrk/vrka/OutputPublisher.kt` | نشر الملفات إلى مجلد الحفظ |
+| `app/src/main/java/com/mvrk/vrka/engine/` | محرك fallback، ترتيب المرشحين، تجميع الوسائط، نقل Gecko |
+| `app/src/main/java/com/mvrk/vrka/share/` | Share Sheet وQuick Download وMediaFormatProbe |
+| `app/src/main/java/com/mvrk/vrka/update/` | تحديث التطبيق من GitHub Releases |
+| `app/src/main/java/com/mvrk/vrka/ComponentUpdateManager.kt` | تحديث yt-dlp وuBlock Origin وPuemos |
 
-### In-App Application Self-Update
+### تدفق Quick Download
 
-VRKA Android includes an in-app update checker for updates from official GitHub releases:
-
-- **GitHub Releases Integration**: Periodically checks the official repository (`/repos/MaverickRox/VRKA-Android/releases/latest`) for new releases.
-- **24-Hour Automatic Gate**: Automatic startup checks run at most once every 24 hours to reduce network traffic.
-- **Manual Check Bypass**: The `[Check for Updates]` button in Settings bypasses the 24-hour interval to check immediately.
-- **Non-Blocking Startup**: Checks run in the background without slowing down app startup.
-- **Semantic Version Comparison**: Uses numeric segment comparison (`SemanticVersion`) so multi-digit versions sort correctly.
-- **Strict APK Asset Naming**: Requires the exact release naming pattern `VRKA-Android-v$version.apk`.
-- **HTTPS-Only Networking & Host Validation**: Streams metadata and APK files over HTTPS from approved GitHub release hosts.
-- **Redirect Validation**: Validates redirect targets and limits redirect hops to at most 5.
-- **FileProvider Installation**: APKs are saved to private app cache and handed off to Android's `PackageInstaller` via `FileProvider`.
-- **Persistent Downloads**: Downloads run through WorkManager so they continue even if the app is backgrounded.
-
-### In-App Component Updates
-
-VRKA Android independently manages and updates its core media and filtering components:
-
-- **yt-dlp Engine (v2026.08.19)**: Bundled binary in `res/raw/ytdlp`. Background updates verify release manifests against pinned OpenPGP detached signatures and SHA-256 checksums. Updates stage in temporary files and roll back automatically if verification fails.
-- **uBlock Origin (v1.74.0)**: Bundled as an intact signed Firefox XPI (`uBlock0@raymondhill.net`) in `assets/extensions/ublock.xpi`. Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it.
-- **Puemos (v5.5.0)**: Bundled as an intact signed Firefox XPI (`{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`) in `assets/extensions/puemos.xpi`. Pre-install checks confirm the extension ID, GeckoView compatibility, and required Mozilla signature metadata. The XPI is installed through GeckoView without extracting or repacking it. The internal VRKA sniffing bridge (`media-detector@vrka.mvrk.com`) remains bundled separately.
-- **Persistent Background Execution**: Component updates use WorkManager to survive Activity recreation and backgrounding.
-- **Concurrency & Spam Protection**: Only one update operation runs per component at a time. Rapid button taps are de-duplicated without freezing the UI.
+1. يشارك المستخدم رابطًا أو يفتحه → يستقبله `ShareActivity`.
+2. يستخرج `ShareUrlParser` رابط `http`/`https` فقط (تُرفض أي scheme أخرى).
+3. يقوم `MediaFormatProbe` بتشغيل yt-dlp لقراءة البيانات ويحوّلها إلى `MediaInfo` مُصنَّف.
+4. يقوم `QuickDownloadPlanner` ببناء صفوف الجودات والأحجام.
+5. عند الضغط على «تنزيل» يُنشأ `DownloadRequest` ويُمرَّر إلى `VrkaDownloadManager.enqueue()` (نفس المسار الموجود، بدون أي Downloader جديد).
+6. يستمر التنزيل في الخلفية بعد إغلاق النافذة.
 
 ---
 
-## Architecture
+## البناء
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Jetpack Compose UI                   │
-│   (HomeScreen, JobsScreen, HistoryScreen, Settings)   │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                 VrkaDownloadManager                    │
-│      (Single-flight Queue, State Machine, Events)      │
-└────────────┬─────────────────────────────┬─────────────┘
-             │                             │
-┌────────────▼────────────┐   ┌────────────▼─────────────┐
-│      Direct Engine      │   │     Fallback Engine      │
-│  (yt-dlp CLI / FFmpeg)  │   │   (GeckoView Runtime)    │
-└─────────────────────────┘   └────────────┬─────────────┘
-                                           │
-                              ┌────────────▼─────────────┐
-                              │  GeckoMediaBridge        │
-                              │  - uBlock Origin         │
-                              │  - Puemos HLS Detector   │
-                              │  - Candidate Ranker      │
-                              └──────────────────────────┘
+```bash
+./gradlew :app:testDebugUnitTest
+./gradlew :app:lintVitalRelease
+./gradlew :app:assembleRelease
 ```
 
-### Architectural Highlights
+### التوقيع
 
-1. **UI Layer**: Built with Jetpack Compose and design tokens (`VrkaTokens`), featuring floating capsule navigation with adaptive backdrop blur across AMOLED Dark and Light modes.
-2. **Download Pipeline**: Enqueues jobs through a sequential FIFO coordinator. Direct extraction invokes `yt-dlp` directly. If extraction fails, `FailureClassifier` assesses whether the failure is recoverable via browser fallback.
-3. **Browser Fallback**: When activated, Mozilla GeckoView boots on-demand in an isolated sandbox. `uBlock Origin` filters unwanted network requests while `Puemos` detects and ranks media streams, extracting necessary cookies and headers for handoff back to the downloader.
-4. **Component Management**: Handles background updates for external binaries with rate-limit protection, hash validation, and fallback protection.
+لا يُخزَّن أي keystore داخل المستودع. يستخدم البناء ملفًا خارجيًا عبر:
 
----
+- متغير البيئة `VRKA_SIGNING_PROPERTIES`، أو
+- `signing.properties` في جذر المشروع، أو
+- `~/.vrka-android-signing/signing.properties`.
 
-## Requirements
+في GitHub Actions تُقرأ المفاتيح من الأسرار التالية:
 
-- **Device Architecture**: `arm64-v8a`
-- **Minimum OS**: Android 8.0 (API Level 26)
-- **Target OS**: Android 16 (API Level 36)
-- **Java Development Kit**: JDK 17 or JDK 21 (e.g., Android Studio JBR)
-- **Android SDK**: Build-Tools 36.1+
+- `SNAPVRKA_RELEASE_KEYSTORE_B64`
+- `SNAPVRKA_RELEASE_STORE_PASSWORD`
+- `SNAPVRKA_RELEASE_KEY_ALIAS`
+- `SNAPVRKA_RELEASE_KEY_PASSWORD`
 
----
-
-## Build Instructions
-
-### Prerequisites
-
-Set `JAVA_HOME` to your JDK 17+ path:
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-```
-
-### Running Offline Unit Tests
-
-```powershell
-.\gradlew.bat testDebugUnitTest --offline
-```
-
-### Assembling Debug APK
-
-```powershell
-.\gradlew.bat assembleDebug --offline
-```
-Output artifact: `app/build/outputs/apk/debug/app-debug.apk`
-
-### Assembling Release APK
-
-Production release builds require explicit signing credentials. The build system **strictly rejects release builds without credentials** and will never silently fall back to debug signing.
-
-1. Configure your release signing properties (outside Git) in `~/.vrka-android-signing/signing.properties` or via the `VRKA_SIGNING_PROPERTIES` environment variable:
-
-```properties
-storeFile=/absolute/path/to/vrka-release.p12
-storePassword=YOUR_KEYSTORE_PASSWORD
-keyAlias=YOUR_KEY_ALIAS
-keyPassword=YOUR_KEY_PASSWORD
-```
-
-2. Build the release APK:
-
-```powershell
-$env:VRKA_SIGNING_PROPERTIES = "C:\Users\username\.vrka-android-signing\signing.properties"
-.\gradlew.bat assembleRelease --offline
-```
-
-The compiled release artifact will be located at:
-```
-app/build/outputs/apk/release/app-release.apk
-```
-
-*(Note: Official GitHub release binaries are verified and published as `VRKA-Android-v4.5.3.apk`)*
+اسم الناتج ثابت: `SnapVRKA-v1.0.0.apk` (ولاحقًا `SnapVRKA-v1.0.1.apk`، `SnapVRKA-v1.1.0.apk` …) مع ملف `SnapVRKA-v1.0.0.apk.sha256`.
 
 ---
 
-## Release Signing & Continuity (Maintainer Protocol)
+## الهوية
 
-To ensure Android system update continuity (`INSTALL_FAILED_UPDATE_INCOMPATIBLE` prevention), every release binary must match the original v1.0 signing lineage:
-
-- **Signer SHA-256 Fingerprint**: `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`
-- **Signer SHA-1 Fingerprint**: `7758980f74a503684bf1a187994e447823d19d7c`
-
-### Maintainer Verification Steps
-
-1. Verify certificate fingerprint:
-   ```bash
-   apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-   ```
-2. Confirm SHA-256 matches `9befdbf4fb00acedb72f866ce4016944c95ea99448e205768383b310ca11e1fa`.
-3. Test in-place upgrade on physical hardware:
-   ```bash
-   adb install -r app/build/outputs/apk/release/app-release.apk
-   ```
-4. Generate release checksum:
-   ```bash
-   sha256sum VRKA-Android-v4.5.3.apk > SHA256SUMS
-   ```
+| الحقل | القيمة |
+| --- | --- |
+| اسم التطبيق | SnapVRKA |
+| applicationId | `com.hoodmoshla.snapvrka` |
+| namespace الداخلي | `com.mvrk.vrka` (لم يُغيَّر لتقليل مخاطر كسر المشروع) |
+| versionName | `1.0.0` |
+| versionCode | `10000` |
+| minSdk | 26 |
+| targetSdk | 36 |
+| ABI | `arm64-v8a` |
 
 ---
 
-## Installation
+## الخصوصية والأمان
 
-1. Download `VRKA-Android-v4.5.3.apk` and `SHA256SUMS` from [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases/latest).
-2. Verify the SHA-256 hash against `SHA256SUMS`:
-   ```powershell
-   (Get-FileHash .\VRKA-Android-v4.5.3.apk -Algorithm SHA256).Hash
-   ```
-3. Install on your Android device:
-   ```bash
-   adb install -r VRKA-Android-v4.5.3.apk
-   ```
+- لا تُسجَّل ملفات تعريف الارتباط أو تراخيص الدخول أو الروابط الموقّعة في تقارير التشخيص.
+- لا تُستخدم صلاحية `SYSTEM_ALERT_WINDOW` ولا تُطلب صلاحية overlay.
+- `usesCleartextTraffic="false"` دائمًا.
+- تحديثات التطبيق تتحقق من HTTPS، ونطاقات GitHub المعتمدة، وإعادة التوجيه، وحجم الملف، واسم حزمة APK.
+- نظام تحديث yt-dlp يحافظ على التحقق من SHA-256 وتوقيع OpenPGP والاستبدال الذري.
 
 ---
 
-## Third-Party Notices & Attribution
+## المواقع المدعومة
 
-VRKA Android integrates the following open-source software:
-- **yt-dlp**: The Unlicense ([yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp))
-- **Mozilla GeckoView**: Mozilla Public License 2.0 ([GeckoView](https://wiki.mozilla.org/Mobile/GeckoView))
-- **uBlock Origin**: GNU General Public License v3.0 ([gorhill/uBlock](https://github.com/gorhill/uBlock))
-- **Puemos HLS/DASH Detector**: Integrated WebExtension stream sniffing engine
-- **FFmpeg**: LGPL / GPL licensed components
-- **Space Mono Font**: SIL Open Font License 1.1
+التطبيق يعتمد على yt-dlp، ولذلك يعمل مع عدد كبير من المواقع مثل:
+
+YouTube · X / Twitter · Facebook · TikTok · Instagram · وغيرها من المواقع التي يدعمها yt-dlp.
+
+> **ملاحظة مهمة:** لا يمكن ضمان عمل كل المواقع دائمًا. تعتمد النتيجة على نوع الرابط وتغيّرات الموقع وسياسات المحتوى. بعض المواقع قد تتطلب تسجيل دخول أو تمنع التنزيل أصلًا، وقد يحتاج المحتوى إلى Browser Fallback.
 
 ---
 
-## License
+## الترخيص والحقوق
 
-VRKA Android is free software licensed under the [GNU General Public License v3.0](LICENSE).
-See the [LICENSE](LICENSE) file for details.
+هذا المشروع مشتق من **VRKA-Android** الأصلي ويعيد استخدام محرك التنزيل الخاص به.
+
+- الترخيص: **GPL-3.0** (انظر `LICENSE`).
+- إشعارات الأطراف الثالثة: انظر `THIRD_PARTY_NOTICES.md`.
+- حقوق المشروع الأصلي محفوظة لأصحابها.

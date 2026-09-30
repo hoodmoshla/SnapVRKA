@@ -1,6 +1,6 @@
 # Third-Party Notices & Licenses
 
-VRKA Android incorporates open-source libraries, engines, and extensions in full compliance with their respective licenses.
+SnapVRKA (built on VRKA Android) incorporates open-source libraries, engines, and extensions in full compliance with their respective licenses.
 
 ---
 

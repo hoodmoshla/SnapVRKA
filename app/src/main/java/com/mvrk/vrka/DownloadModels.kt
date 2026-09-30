@@ -1,5 +1,6 @@
 package com.mvrk.vrka
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 
 enum class JobState {
@@ -19,59 +20,60 @@ enum class JobState {
     val isForegroundWork: Boolean
         get() = this == QUEUED || this == PREPARING || this == DOWNLOADING || this == POSTPROCESSING || this == BROWSER_FALLBACK
 
-    val label: String
+    @get:StringRes
+    val labelRes: Int
         get() = when (this) {
-            QUEUED -> "Queued"
-            PREPARING -> "Preparing"
-            WAITING_FOR_USER -> "Waiting for you"
-            BROWSER_FALLBACK -> "Browser fallback"
-            DOWNLOADING -> "Downloading"
-            POSTPROCESSING -> "Finishing"
-            DONE -> "Complete"
-            FAILED -> "Failed"
-            CANCELLED -> "Cancelled"
+            QUEUED -> R.string.state_queued
+            PREPARING -> R.string.state_preparing
+            WAITING_FOR_USER -> R.string.state_waiting_for_user
+            BROWSER_FALLBACK -> R.string.state_browser_fallback
+            DOWNLOADING -> R.string.state_downloading
+            POSTPROCESSING -> R.string.state_postprocessing
+            DONE -> R.string.state_done
+            FAILED -> R.string.state_failed
+            CANCELLED -> R.string.state_cancelled
         }
 }
 
-enum class MediaMode(val label: String) {
-    VIDEO("Video"),
-    AUDIO("Audio"),
+enum class MediaMode(@get:StringRes val labelRes: Int) {
+    VIDEO(R.string.mode_video),
+    AUDIO(R.string.mode_audio),
 }
 
-enum class VideoQuality(val label: String, val height: Int?) {
-    BEST("Best available", null),
-    P2160("2160p", 2160),
-    P1440("1440p", 1440),
-    P1080("1080p", 1080),
-    P720("720p", 720),
-    P480("480p", 480),
-    P360("360p", 360),
+enum class VideoQuality(@get:StringRes val labelRes: Int, val height: Int?) {
+    BEST(R.string.quality_best_available, null),
+    P2160(R.string.quality_2160, 2160),
+    P1440(R.string.quality_1440, 1440),
+    P1080(R.string.quality_1080, 1080),
+    P720(R.string.quality_720, 720),
+    P480(R.string.quality_480, 480),
+    P360(R.string.quality_360, 360),
 }
 
-enum class AudioFormat(val label: String, val codec: String) {
-    MP3("MP3 (compressed)", "mp3"),
-    OPUS("Opus (prefer native)", "opus"),
-    WAV("WAV (uncompressed)", "wav"),
+enum class AudioFormat(@get:StringRes val labelRes: Int, val codec: String) {
+    MP3(R.string.audio_format_mp3, "mp3"),
+    OPUS(R.string.audio_format_opus, "opus"),
+    WAV(R.string.audio_format_wav, "wav"),
 }
 
-enum class SaveLocationMode(val label: String) {
-    REMEMBER_LOCATION("Use selected"),
-    ASK_EVERY_TIME("Ask every time"),
+enum class SaveLocationMode(@get:StringRes val labelRes: Int) {
+    REMEMBER_LOCATION(R.string.settings_save_use_selected),
+    ASK_EVERY_TIME(R.string.settings_save_ask),
 }
 
-enum class FontPreference(val label: String) {
-    VRKA_FONT("VRKA Font"),
-    SYSTEM_FONT("System Font"),
+enum class FontPreference(@get:StringRes val labelRes: Int) {
+    VRKA_FONT(R.string.settings_font_vrka),
+    SYSTEM_FONT(R.string.settings_font_system),
 }
 
-enum class ThemeMode(val label: String) {
-    LIGHT("Light"),
-    DARK("Dark"),
+enum class ThemeMode(@get:StringRes val labelRes: Int) {
+    LIGHT(R.string.settings_theme_light),
+    DARK(R.string.settings_theme_dark),
 }
 
-enum class UpdatePreference(val label: String) {
-    STABLE("Stable"),
-    NIGHTLY("Nightly"),
+enum class UpdatePreference(@get:StringRes val labelRes: Int) {
+    STABLE(R.string.settings_channel_stable),
+    NIGHTLY(R.string.settings_channel_nightly),
 }
 
 @Immutable
@@ -102,6 +104,11 @@ data class DownloadRequest(
     val destinationTreeUri: String? = null,
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
+    /**
+     * Optional explicit yt-dlp format selector produced by the Quick Download probe.
+     * When null the existing quality/format heuristics are used unchanged.
+     */
+    val formatSelector: String? = null,
 )
 
 @Immutable

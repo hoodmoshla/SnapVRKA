@@ -1,5 +1,8 @@
 package com.mvrk.vrka
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
@@ -183,7 +186,7 @@ fun <T> VrkaSegmentedControl(
     items: List<T>,
     selectedItem: T,
     onItemSelected: (T) -> Unit,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     isMonospace: Boolean = false,
 ) {
@@ -505,11 +508,14 @@ fun VrkaTextButton(
     }
 }
 
-enum class VrkaDestination(val label: String, @param:androidx.annotation.DrawableRes val iconRes: Int) {
-    DOWNLOAD("Download", R.drawable.ic_download),
-    QUEUE("Queue", R.drawable.ic_queue),
-    HISTORY("History", R.drawable.ic_history),
-    SETTINGS("Settings", R.drawable.ic_settings),
+enum class VrkaDestination(
+    @param:StringRes val labelRes: Int,
+    @param:androidx.annotation.DrawableRes val iconRes: Int,
+) {
+    DOWNLOAD(R.string.nav_download, R.drawable.ic_download),
+    QUEUE(R.string.nav_queue, R.drawable.ic_queue),
+    HISTORY(R.string.nav_history, R.drawable.ic_history),
+    SETTINGS(R.string.nav_settings, R.drawable.ic_settings),
 }
 
 @Composable
@@ -633,11 +639,13 @@ fun VrkaFloatingNavBar(
             includeFontPadding = false,
         ),
     )
-    val downloadWidthPx = remember(textMeasurer, navLabelStyle) {
-        textMeasurer.measure(text = "Download", style = navLabelStyle).size.width
+    val downloadLabel = stringResource(VrkaDestination.DOWNLOAD.labelRes)
+    val settingsLabel = stringResource(VrkaDestination.SETTINGS.labelRes)
+    val downloadWidthPx = remember(textMeasurer, navLabelStyle, downloadLabel) {
+        textMeasurer.measure(text = downloadLabel, style = navLabelStyle).size.width
     }
-    val settingsWidthPx = remember(textMeasurer, navLabelStyle) {
-        textMeasurer.measure(text = "Settings", style = navLabelStyle).size.width
+    val settingsWidthPx = remember(textMeasurer, navLabelStyle, settingsLabel) {
+        textMeasurer.measure(text = settingsLabel, style = navLabelStyle).size.width
     }
     val downloadWidthDp = with(density) { downloadWidthPx.toDp() }
     val settingsWidthDp = with(density) { settingsWidthPx.toDp() }
@@ -865,13 +873,13 @@ private fun VrkaNavItem(
         ) {
             androidx.compose.material3.Icon(
                 painter = androidx.compose.ui.res.painterResource(item.iconRes),
-                contentDescription = item.label,
+                contentDescription = stringResource(item.labelRes),
                 tint = contentColor,
                 modifier = Modifier.size(22.dp),
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = item.label,
+                text = stringResource(item.labelRes),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = VrkaMonoFamily,
                     fontSize = 11.5.sp,

@@ -18,3 +18,8 @@ dump.xml
 scratch/
 scratch_gv/
 *.apk
+*.idsig
+*.apk.sha256
+*.keystore.b64
+release-keystore/
+artifacts/

@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,6 +70,14 @@ class VrkaDownloadManager(
     val appUpdateManager = AppUpdateManager.getInstance(context, settingsRepository)
     val componentUpdateManager = ComponentUpdateManager.getInstance(context)
 
+    /**
+     * Prepares the yt-dlp/FFmpeg runtime without enqueueing a job.
+     * Used by the Quick Download sheet so it can probe formats before a job exists.
+     */
+    suspend fun ensureRuntimeReady() {
+        withContext(Dispatchers.IO) { ensureInitialized() }
+    }
+
     fun clearDiagnostics() {
         scope.launch(Dispatchers.IO) {
             diagnosticStore.clear()
@@ -99,7 +108,7 @@ class VrkaDownloadManager(
     }
 
     fun enqueue(request: DownloadRequest): String {
-        require(isHttpUrl(request.url)) { "Enter a valid http or https URL." }
+        require(isHttpUrl(request.url)) { context.getString(R.string.error_enter_url) }
         val id = UUID.randomUUID().toString()
         val job = DownloadJob(id = id, request = request)
         mutate(persist = true) { listOf(job) + it }
@@ -219,7 +228,7 @@ class VrkaDownloadManager(
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
-            "Share with",
+            context.getString(R.string.share_with),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
     }
@@ -468,7 +477,7 @@ class VrkaDownloadManager(
                         summary = failureMsg,
                         detail = tailOutput,
                         url = currentJob?.request?.url.orEmpty(),
-                        quality = currentJob?.request?.quality?.label.orEmpty(),
+                        quality = currentJob?.request?.quality?.labelRes?.let(context::getString).orEmpty(),
                         acquisitionMethod = if (currentJob?.request?.resolvedMediaUrl != null) "Browser Fallback" else "Native yt-dlp",
                     )
                 )
@@ -603,7 +612,7 @@ class VrkaDownloadManager(
         val doneDetail = if (isOpus) {
             if (transcoded) "Saved (transcoded to Opus)" else "Saved (native Opus stream copy)"
         } else if (published.size == 1) {
-            "Saved to Downloads/VRKA"
+            "Saved to Downloads/SnapVRKA"
         } else {
             "Saved " + published.size + " files"
         }
@@ -771,7 +780,7 @@ class VrkaDownloadManager(
             job.id,
             state = JobState.DONE,
             progress = 100f,
-            detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
+            detail = if (published.size == 1) "Saved to Downloads/SnapVRKA" else "Saved ${published.size} files",
             outputUris = published,
             error = "",
             persist = true,

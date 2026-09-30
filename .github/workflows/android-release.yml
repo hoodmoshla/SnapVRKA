@@ -1,0 +1,189 @@
+name: Android Release
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "release/**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: snapvrka-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------- build
+  build:
+    name: Build, test and verify SnapVRKA
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Install required SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-36.1" "platforms;android-36" "build-tools;36.1.0" > /dev/null
+
+      - name: Provide release signing material
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.SNAPVRKA_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.SNAPVRKA_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SNAPVRKA_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SNAPVRKA_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.snapvrka-signing"
+          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${STORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
+            echo "Signing secrets detected."
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.snapvrka-signing/snapvrka-release.keystore"
+            cat > "$HOME/.snapvrka-signing/signing.properties" <<EOF
+          storeFile=$HOME/.snapvrka-signing/snapvrka-release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+            chmod 600 "$HOME/.snapvrka-signing/signing.properties"
+            echo "VRKA_SIGNING_PROPERTIES=$HOME/.snapvrka-signing/signing.properties" >> "$GITHUB_ENV"
+            echo "has_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Release signing secrets are not configured. Release APK will be skipped."
+            echo "has_signing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Lint (vital release)
+        run: ./gradlew :app:lintVitalRelease --stacktrace
+
+      - name: Assemble release APK
+        if: steps.signing.outputs.has_signing == 'true'
+        env:
+          VRKA_SIGNING_PROPERTIES: ${{ env.VRKA_SIGNING_PROPERTIES }}
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Assemble debug APK (unsigned fallback for review only)
+        if: steps.signing.outputs.has_signing != 'true'
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Verify release APK identity and signature
+        if: steps.signing.outputs.has_signing == 'true'
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          APKSIGNER="$(ls "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort | tail -1)"
+          AAPT2="$(ls "$SDK_ROOT"/build-tools/*/aapt2 2>/dev/null | sort | tail -1)"
+
+          OUT="app/build/outputs/apk/release"
+          SRC="$(ls "$OUT"/*.apk | head -1)"
+          mkdir -p artifacts
+          cp "$SRC" "artifacts/SnapVRKA-v1.0.0.apk"
+          cd artifacts
+
+          echo "Verifying SnapVRKA-v1.0.0.apk"
+          "$APKSIGNER" verify --verbose --print-certs SnapVRKA-v1.0.0.apk | tee apksigner.txt
+
+          BADGING="$(unzip -p SnapVRKA-v1.0.0.apk AndroidManifest.xml > /dev/null 2>&1 && echo ok)"
+          echo "manifest-entry=$BADGING"
+
+          echo "--- badging ---"
+          "$AAPT2" dump badging SnapVRKA-v1.0.0.apk | head -20
+
+          sha256sum SnapVRKA-v1.0.0.apk > SnapVRKA-v1.0.0.apk.sha256
+          cat SnapVRKA-v1.0.0.apk.sha256
+
+      - name: Collect debug artifact (fallback)
+        if: steps.signing.outputs.has_signing != 'true'
+        run: |
+          mkdir -p artifacts
+          cp "$(ls app/build/outputs/apk/debug/*.apk | head -1)" artifacts/SnapVRKA-v1.0.0-debug.apk
+          sha256sum artifacts/SnapVRKA-v1.0.0-debug.apk > artifacts/SnapVRKA-v1.0.0-debug.apk.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapVRKA-release
+          path: |
+            artifacts/SnapVRKA-v1.0.0.apk
+            artifacts/SnapVRKA-v1.0.0.apk.sha256
+            artifacts/apksigner.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapVRKA-reports
+          path: |
+            app/build/reports/**
+            app/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------- release
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: SnapVRKA-release
+          path: artifacts
+
+      - name: Ensure signed APK is present
+        run: |
+          set -euo pipefail
+          if [ ! -f artifacts/SnapVRKA-v1.0.0.apk ]; then
+            echo "::error::Signed release APK is missing; refusing to publish a release."
+            exit 1
+          fi
+          ls -la artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SnapVRKA ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/SnapVRKA-v1.0.0.apk
+            artifacts/SnapVRKA-v1.0.0.apk.sha256

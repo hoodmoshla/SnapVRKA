@@ -86,19 +86,19 @@ class DownloadService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = job?.title?.ifBlank { "VRKA download" } ?: "VRKA"
-        val status = job?.let(::jobStatusLabel) ?: "Preparing"
+        val title = job?.title?.ifBlank { getString(R.string.app_name) } ?: getString(R.string.app_name)
+        val status = job?.let { jobStatusLabel(this, it) } ?: getString(R.string.state_preparing)
         val summary = job?.let {
-            val progress = jobProgressSummary(it)
-            if (progress == it.detail) "$status • ${requestSummary(it.request)}"
+            val progress = jobProgressSummary(this, it)
+            if (progress == it.detail) "$status • ${requestSummary(this, it.request)}"
             else "$status • $progress"
-        } ?: "Preparing download"
+        } ?: getString(R.string.state_preparing)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(this, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
-            .setSubText("VRKA • $status")
+            .setSubText("${getString(R.string.app_name)} • $status")
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
             .setContentIntent(openIntent)
             .setOnlyAlertOnce(true)
@@ -120,7 +120,7 @@ class DownloadService : Service() {
                     .putExtra(EXTRA_JOB_ID, job.id),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            builder.addAction(R.drawable.ic_close, "Cancel", cancelIntent)
+            builder.addAction(R.drawable.ic_close, getString(R.string.action_cancel), cancelIntent)
         }
         return builder.build()
     }
@@ -129,17 +129,17 @@ class DownloadService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Active downloads",
+            getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Progress for downloads started in VRKA"
+            description = getString(R.string.notification_channel_description)
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     companion object {
-        private const val CHANNEL_ID = "vrka_downloads"
+        private const val CHANNEL_ID = "snapvrka_downloads"
         private const val NOTIFICATION_ID = 4107
         private const val ACTION_CANCEL = "com.mvrk.vrka.CANCEL"
         private const val ACTION_STOP_IF_IDLE = "com.mvrk.vrka.STOP_IF_IDLE"

@@ -49,7 +49,7 @@ class AppUpdateDownloadWorker(
                 val url = AppUpdateManager.validateHttpsUrl(currentUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.instanceFollowRedirects = false
-                conn.setRequestProperty("User-Agent", "VRKA-Android-AppUpdater")
+                conn.setRequestProperty("User-Agent", "SnapVRKA-AppUpdater")
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 30_000
 

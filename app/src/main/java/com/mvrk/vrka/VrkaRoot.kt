@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
@@ -150,7 +151,7 @@ fun VrkaRoot(
                         { request: DownloadRequest ->
                             runCatching { enqueue(request) }.onFailure { error ->
                                 pendingRequest = null
-                                val message = error.message ?: "Could not add download"
+                                val message = error.message ?: context.getString(R.string.error_could_not_add)
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
                             Unit
@@ -219,7 +220,7 @@ fun VrkaRoot(
                             VrkaDestination.QUEUE -> {
                                 JobsScreen(
                                     jobs = activeJobs,
-                                    emptyMessage = "Your active queue is empty.",
+                                    emptyMessage = stringResource(R.string.queue_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -235,7 +236,7 @@ fun VrkaRoot(
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
                                     jobs = historyJobs,
-                                    emptyMessage = "Completed and failed downloads appear here.",
+                                    emptyMessage = stringResource(R.string.history_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -387,7 +388,7 @@ private fun FallbackInteractionOverlay(
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
-                                    "BROWSER FALLBACK",
+                                    stringResource(R.string.state_browser_fallback),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
@@ -406,8 +407,8 @@ private fun FallbackInteractionOverlay(
                         }
                         Text(
                             when {
-                                candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
-                                else -> "Select server / Press Play to initiate media stream"
+                                candidateCount > 0 -> stringResource(R.string.fallback_capturing, candidateCount)
+                                else -> stringResource(R.string.fallback_select_server)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -428,7 +429,7 @@ private fun FallbackInteractionOverlay(
                                 vertical = 4.dp
                             )
                         ) {
-                            Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.action_minimize), style = MaterialTheme.typography.labelMedium)
                         }
                         Button(
                             onClick = onCancel,
@@ -438,7 +439,7 @@ private fun FallbackInteractionOverlay(
                                 vertical = 4.dp
                             )
                         ) {
-                            Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.action_cancel), style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -470,7 +471,7 @@ private fun FallbackInteractionOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Initializing fallback browser session...",
+                            stringResource(R.string.fallback_initializing),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

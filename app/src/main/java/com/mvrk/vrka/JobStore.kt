@@ -84,7 +84,8 @@ internal class JobStore(private val target: File) {
                     .put("referer", request.referer)
                     .put("origin", request.origin)
                     .put("customHeaders", JSONObject(request.customHeaders))
-                    .put("destinationTreeUri", request.destinationTreeUri),
+                    .put("destinationTreeUri", request.destinationTreeUri)
+                    .put("formatSelector", request.formatSelector),
             )
     }
 
@@ -151,6 +152,7 @@ internal class JobStore(private val target: File) {
                 origin = encodedRequest.optString("origin"),
                 customHeaders = customHeadersMap,
                 destinationTreeUri = if (encodedRequest.isNull("destinationTreeUri")) null else encodedRequest.optString("destinationTreeUri").takeIf { it.isNotBlank() },
+                formatSelector = encodedRequest.optString("formatSelector").takeIf { it.isNotBlank() },
             ),
             state = restoredState,
             title = value.optString("title"),

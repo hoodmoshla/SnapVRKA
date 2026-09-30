@@ -91,12 +91,12 @@ class AppUpdateManagerTest {
                     {
                         "name": "checksums.sha256",
                         "size": 128,
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/checksums.sha256"
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/checksums.sha256"
                     },
                     {
-                        "name": "VRKA-Android-v4.5.2.apk",
+                        "name": "SnapVRKA-v4.5.2.apk",
                         "size": 25000000,
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk"
                     }
                 ]
             }
@@ -108,10 +108,10 @@ class AppUpdateManagerTest {
         assertEquals(SemanticVersion(4, 5, 2), release.version)
         assertEquals("VRKA Android 4.5.2", release.name)
         assertTrue(release.body.contains("Bug fixes"))
-        assertEquals("VRKA-Android-v4.5.2.apk", release.apkFileName)
+        assertEquals("SnapVRKA-v4.5.2.apk", release.apkFileName)
         assertEquals(25000000L, release.apkSizeBytes)
         assertEquals(
-            "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk",
+            "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk",
             release.apkDownloadUrl,
         )
     }
@@ -125,8 +125,8 @@ class AppUpdateManagerTest {
                 "prerelease": false,
                 "assets": [
                     {
-                        "name": "VRKA-Android-v4.5.2.apk",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
+                        "name": "SnapVRKA-v4.5.2.apk",
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk"
                     }
                 ]
             }
@@ -140,8 +140,8 @@ class AppUpdateManagerTest {
                 "prerelease": true,
                 "assets": [
                     {
-                        "name": "VRKA-Android-v4.5.2.apk",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
+                        "name": "SnapVRKA-v4.5.2.apk",
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk"
                     }
                 ]
             }
@@ -174,9 +174,9 @@ class AppUpdateManagerTest {
                     "published_at": "2026-09-09T00:00:00Z",
                     "assets": [
                         {
-                            "name": "VRKA-Android-v4.5.2.apk",
+                            "name": "SnapVRKA-v4.5.2.apk",
                             "size": 30000000,
-                            "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk"
+                            "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk"
                         }
                     ]
                 }
@@ -187,7 +187,7 @@ class AppUpdateManagerTest {
         assertNotNull(release)
         assertEquals("v4.5.2", release!!.tagName)
         assertEquals("Stable 4.5.2", release.name)
-        assertEquals("VRKA-Android-v4.5.2.apk", release.apkFileName)
+        assertEquals("SnapVRKA-v4.5.2.apk", release.apkFileName)
     }
 
     @Test
@@ -200,7 +200,7 @@ class AppUpdateManagerTest {
                 "assets": [
                     {
                         "name": "source.tar.gz",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/source.tar.gz"
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/source.tar.gz"
                     }
                 ]
             }
@@ -217,7 +217,7 @@ class AppUpdateManagerTest {
             - Bullet 1 with **bold** text
             * Bullet 2 with `inline code`
             > Blockquote note
-            Link to [VRKA](https://github.com/MaverickRox/VRKA-Android)
+            Link to [VRKA](https://github.com/hoodmoshla/SnapVRKA)
         """.trimIndent()
 
         val annotated = parseMarkdownToAnnotatedString(markdown)
@@ -252,15 +252,15 @@ class AppUpdateManagerTest {
                 "assets": [
                     {
                         "name": "other-app.apk",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/other-app.apk"
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/other-app.apk"
                     },
                     {
-                        "name": "VRKA-Android-arm64-v8a.apk",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-arm64-v8a.apk"
+                        "name": "SnapVRKA-arm64-v8a.apk",
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-arm64-v8a.apk"
                     },
                     {
-                        "name": "VRKA-Android-v4.5.2.zip",
-                        "browser_download_url": "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.zip"
+                        "name": "SnapVRKA-v4.5.2.zip",
+                        "browser_download_url": "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.zip"
                     }
                 ]
             }
@@ -271,11 +271,11 @@ class AppUpdateManagerTest {
     @Test
     fun testValidateHttpsUrlApprovedHosts() {
         val approvedUrls = listOf(
-            "https://api.github.com/repos/MaverickRox/VRKA-Android/releases/latest",
-            "https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.1/VRKA-Android-v4.5.1.apk",
+            "https://api.github.com/repos/hoodmoshla/SnapVRKA/releases/latest",
+            "https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.1/SnapVRKA-v4.5.1.apk",
             "https://objects.githubusercontent.com/github-production-release-asset/12345/file.apk",
             "https://release-assets.githubusercontent.com/github-production-release-asset/67890/file.apk",
-            "https://raw.githubusercontent.com/MaverickRox/VRKA-Android/main/README.md",
+            "https://raw.githubusercontent.com/hoodmoshla/SnapVRKA/main/README.md",
         )
 
         for (urlStr in approvedUrls) {
@@ -287,7 +287,7 @@ class AppUpdateManagerTest {
 
     @Test(expected = SecurityException::class)
     fun testValidateHttpsUrlRejectsInsecureHttp() {
-        AppUpdateManager.validateHttpsUrl("http://github.com/MaverickRox/VRKA-Android/releases/latest")
+        AppUpdateManager.validateHttpsUrl("http://github.com/hoodmoshla/SnapVRKA/releases/latest")
     }
 
     @Test(expected = SecurityException::class)
@@ -302,12 +302,12 @@ class AppUpdateManagerTest {
 
     @Test
     fun testResolveRedirectUrl() {
-        val base = java.net.URL("https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/VRKA-Android-v4.5.2.apk")
+        val base = java.net.URL("https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/SnapVRKA-v4.5.2.apk")
 
         val absolute = AppUpdateManager.resolveRedirectUrl(base, "https://objects.githubusercontent.com/asset.apk")
         assertEquals("https://objects.githubusercontent.com/asset.apk", absolute)
 
-        val relative = AppUpdateManager.resolveRedirectUrl(base, "/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk")
-        assertEquals("https://github.com/MaverickRox/VRKA-Android/releases/download/v4.5.2/redirected.apk", relative)
+        val relative = AppUpdateManager.resolveRedirectUrl(base, "/hoodmoshla/SnapVRKA/releases/download/v4.5.2/redirected.apk")
+        assertEquals("https://github.com/hoodmoshla/SnapVRKA/releases/download/v4.5.2/redirected.apk", relative)
     }
 }

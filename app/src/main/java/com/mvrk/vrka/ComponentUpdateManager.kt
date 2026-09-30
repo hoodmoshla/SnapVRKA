@@ -256,7 +256,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                             updateState(compId) {
                                 it.copy(
                                     updateState = stateEnum,
-                                    message = "Updating ($progressState)...",
+                                    message = context.getString(R.string.settings_updating_progress, progressState),
                                     error = null,
                                 )
                             }
@@ -276,7 +276,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                                         checkState = ComponentCheckState.UP_TO_DATE,
                                         installedVersion = verifiedVer,
                                         latestVersion = cleanVer,
-                                        message = "Updated successfully to v$cleanVer",
+                                        message = context.getString(R.string.settings_updated_to, cleanVer),
                                         error = null,
                                     )
                                 }
@@ -288,12 +288,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                             }
                         }
                         WorkInfo.State.FAILED -> {
-                            val error = workInfo.outputData.getString(ComponentUpdateWorker.KEY_ERROR) ?: "Update failed"
+                            val error = workInfo.outputData.getString(ComponentUpdateWorker.KEY_ERROR) ?: context.getString(R.string.settings_update_failed)
                             updateState(compId) {
                                 it.copy(
                                     updateState = ComponentUpdateState.UPDATE_FAILED,
                                     error = error,
-                                    message = "Update failed: $error",
+                                    message = context.getString(R.string.settings_update_failed_detail, error),
                                 )
                             }
                             if (_batchState.value == BatchOperationState.UPDATING &&
@@ -306,7 +306,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                             updateState(compId) {
                                 it.copy(
                                     updateState = ComponentUpdateState.UPDATE_IDLE,
-                                    message = "Update cancelled",
+                                    message = context.getString(R.string.settings_update_cancelled),
                                 )
                             }
                         }
@@ -325,7 +325,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             it.copy(
                 checkState = ComponentCheckState.CHECK_IDLE,
                 updateState = ComponentUpdateState.UPDATE_IDLE,
-                message = "Channel switched to ${preference.label}. Check for updates.",
+                message = context.getString(R.string.settings_channel_switched, context.getString(preference.labelRes)),
                 error = null,
             )
         }
@@ -342,7 +342,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         // Rate limit gate: if currently in cooldown, report truthfully without hitting network
         val now = System.currentTimeMillis()
         if (now < rateLimitCooldownUntil) {
-            val cooldownMsg = rateLimitErrorMessage ?: "GitHub API rate limit reached. Try again later."
+            val cooldownMsg = rateLimitErrorMessage ?: context.getString(R.string.settings_rate_limit)
             updateState(id) {
                 it.copy(
                     checkState = ComponentCheckState.CHECK_FAILED,
@@ -370,7 +370,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         updateState(id) {
             it.copy(
                 checkState = ComponentCheckState.CHECKING,
-                message = "Checking for updates...",
+                message = context.getString(R.string.settings_checking_updates),
                 error = null,
             )
         }
@@ -414,7 +414,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         checkState = if (hasUpdate) ComponentCheckState.UPDATE_AVAILABLE else ComponentCheckState.UP_TO_DATE,
                         latestVersion = cleanCandidate,
                         message = if (hasUpdate) {
-                            if (isChannelSwitch) "Channel switch: v$cleanCandidate (${channel.label})"
+                            if (isChannelSwitch) context.getString(R.string.settings_channel_switched, context.getString(channel.labelRes)) + " v$cleanCandidate"
                             else "Update available: v$cleanCandidate"
                         } else {
                             "Up to date (v$cleanInstalled)"
@@ -431,7 +431,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                     it.copy(
                         checkState = ComponentCheckState.CHECK_FAILED,
                         error = "Check timed out (> ${CHECK_TIMEOUT_MS / 1000}s)",
-                        message = "Check timed out",
+                        message = context.getString(R.string.settings_network_timeout),
                         lastChecked = System.currentTimeMillis(),
                     )
                 }
@@ -441,10 +441,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             if (checkGenerations[id] == generation) {
                 val errMsg = when (e) {
-                    is RateLimitException -> e.message ?: "GitHub API rate limit reached. Try again later."
-                    is SocketTimeoutException -> "Network timeout"
-                    is IOException -> e.message ?: "Network error"
-                    else -> e.message?.take(60) ?: "Unknown error"
+                    is RateLimitException -> e.message ?: context.getString(R.string.settings_rate_limit)
+                    is SocketTimeoutException -> context.getString(R.string.settings_network_timeout)
+                    is IOException -> e.message ?: context.getString(R.string.settings_network_error)
+                    else -> e.message?.take(60) ?: context.getString(R.string.settings_unknown_error)
                 }
                 Log.e(TAG, "Failed checking update for $id: $errMsg", e)
                 updateState(id) {
@@ -584,7 +584,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             it.copy(
                 updateState = ComponentUpdateState.DOWNLOADING,
                 lifecycleState = ComponentLifecycleState.DOWNLOADING,
-                message = "Starting update for ${it.name}...",
+                message = context.getString(R.string.settings_starting_update, it.name),
                 error = null,
             )
         }
@@ -613,8 +613,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             updateState(id) {
                 it.copy(
                     updateState = ComponentUpdateState.UPDATE_FAILED,
-                    error = error.message ?: "Failed to start background worker",
-                    message = "Update failed to start",
+                    error = error.message ?: context.getString(R.string.settings_worker_start_failed),
+                    message = context.getString(R.string.settings_update_not_started),
                 )
             }
         }
@@ -642,7 +642,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         }
 
         if (now < rateLimitCooldownUntil) {
-            throw RateLimitException(rateLimitErrorMessage ?: "GitHub API rate limit reached. Try again later.")
+            throw RateLimitException(rateLimitErrorMessage ?: context.getString(R.string.settings_rate_limit))
         }
 
         val url = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
@@ -675,7 +675,7 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         else -> 60_000L // 1 minute default cooldown
                     }
                     rateLimitCooldownUntil = now + cooldownMs
-                    val msg = "GitHub API rate limit reached. Try again later."
+                    val msg = context.getString(R.string.settings_rate_limit)
                     rateLimitErrorMessage = msg
                     throw RateLimitException(msg)
                 }

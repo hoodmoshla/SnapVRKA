@@ -49,7 +49,7 @@ class AppUpdateManager(
     private var activeDownloadJob: Job? = null
 
     val currentVersion: SemanticVersion by lazy {
-        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(4, 5, 1)
+        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(1, 0, 0)
     }
 
     init {
@@ -92,7 +92,7 @@ class AppUpdateManager(
                         WorkInfo.State.FAILED -> {
                             val error = workInfo.outputData.getString(AppUpdateDownloadWorker.KEY_ERROR)
                                 ?: prefs.getString(AppUpdateDownloadWorker.KEY_ERROR, null)
-                                ?: "Download failed"
+                                ?: context.getString(com.mvrk.vrka.R.string.update_failed)
                             _downloadState.value = AppUpdateDownloadState.Error(error)
                         }
                         WorkInfo.State.CANCELLED -> {
@@ -194,7 +194,7 @@ class AppUpdateManager(
             )
         }.onFailure { error ->
             Log.e(TAG, "Failed to enqueue AppUpdateDownloadWorker: ${error.message}", error)
-            _downloadState.value = AppUpdateDownloadState.Error(error.message ?: "Failed to start background download")
+            _downloadState.value = AppUpdateDownloadState.Error(error.message ?: context.getString(com.mvrk.vrka.R.string.update_failed))
         }
     }
 
@@ -226,7 +226,7 @@ class AppUpdateManager(
             context.startActivity(installIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer: ${e.message}", e)
-            _downloadState.value = AppUpdateDownloadState.Error("Failed to launch package installer: ${e.message}")
+            _downloadState.value = AppUpdateDownloadState.Error("${context.getString(com.mvrk.vrka.R.string.update_failed)}: ${e.message}")
         }
     }
 
@@ -352,9 +352,9 @@ class AppUpdateManager(
 
     companion object {
         private const val TAG = "VRKA-AppUpdater"
-        private const val USER_AGENT = "VRKA-Android-AppUpdater"
+        private const val USER_AGENT = "SnapVRKA-AppUpdater"
         private const val DEFAULT_API_ENDPOINT =
-            "https://api.github.com/repos/MaverickRox/VRKA-Android/releases/latest"
+            "https://api.github.com/repos/hoodmoshla/SnapVRKA/releases/latest"
         const val TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000L // 86,400,000 ms
         private const val CONNECT_TIMEOUT_MS = 6000
         private const val READ_TIMEOUT_MS = 6000
@@ -369,7 +369,7 @@ class AppUpdateManager(
             "raw.githubusercontent.com",
         )
 
-        val APK_NAME_PATTERN = Regex("""^VRKA-Android-v\d+\.\d+\.\d+\.apk$""", RegexOption.IGNORE_CASE)
+        val APK_NAME_PATTERN = Regex("""^SnapVRKA-v\d+\.\d+\.\d+\.apk$""", RegexOption.IGNORE_CASE)
 
         fun isApprovedHost(host: String): Boolean {
             val h = host.lowercase()
@@ -445,10 +445,10 @@ class AppUpdateManager(
 
             val assets = json.optJSONArray("assets") ?: return null
             var chosenAsset: JSONObject? = null
-            val expectedVersionApk = "VRKA-Android-v$version.apk"
+            val expectedVersionApk = "SnapVRKA-v$version.apk"
 
-            // APK asset selection must require the expected VRKA Android APK naming convention:
-            // VRKA-Android-vX.Y.Z.apk. Reject unrelated APK assets and non-APK assets.
+            // APK asset selection must require the expected SnapVRKA APK naming convention:
+            // SnapVRKA-vX.Y.Z.apk. Reject unrelated APK assets (including legacy VRKA-Android APKs).
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val assetName = asset.optString("name", "")

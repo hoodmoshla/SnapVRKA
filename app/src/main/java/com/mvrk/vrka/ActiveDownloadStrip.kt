@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -99,7 +100,7 @@ internal fun ActiveDownloadStrip(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = job.title.ifBlank { "Active download" },
+                        text = job.title.ifBlank { stringResource(R.string.detail_active_download) },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = VrkaTokens.TextPrimary,
