@@ -271,7 +271,11 @@ private fun ReadyState(
         SectionTitle(stringResource(R.string.quick_section_audio))
         state.audioOptions.forEach { option ->
             QualityRow(
-                title = option.label,
+                title = if (option.codec == "opus") {
+                    stringResource(R.string.quick_audio_opus)
+                } else {
+                    stringResource(R.string.quick_audio_mp3, option.bitrateKbps ?: 0)
+                },
                 subtitle = if (option.isNativeCopy && option.codec == "opus") {
                     stringResource(R.string.quick_audio_opus_native)
                 } else {
