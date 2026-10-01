@@ -211,6 +211,10 @@ fun VrkaRoot(
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
+                                    onProbe = { target ->
+                                        manager.ensureRuntimeReady()
+                                        com.mvrk.vrka.share.MediaFormatProbe.probe(target, scope)
+                                    },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)

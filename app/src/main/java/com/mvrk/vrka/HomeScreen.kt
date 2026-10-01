@@ -32,6 +32,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -41,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,8 +52,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mvrk.vrka.share.MediaInfo
+import com.mvrk.vrka.share.ProbePhase
+import com.mvrk.vrka.share.QualityChoiceList
+import com.mvrk.vrka.share.QuickDownloadAnalyzer
+import com.mvrk.vrka.share.QuickDownloadPlanner
+import com.mvrk.vrka.share.QuickDownloadState
+import com.mvrk.vrka.share.ShareUrlParser
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun HomeScreen(
@@ -59,15 +70,17 @@ internal fun HomeScreen(
     runtime: RuntimeStatus,
     modifier: Modifier = Modifier,
     onEnqueue: (DownloadRequest) -> Unit,
+    onProbe: suspend (String) -> MediaInfo,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf(settings.defaultMode) }
-    var quality by remember { mutableStateOf(settings.defaultQuality) }
+    // Quality choices come from a real yt-dlp probe, never from a static list.
+    var analysis by remember { mutableStateOf(QuickDownloadState()) }
+    var analysing by remember { mutableStateOf(false) }
     var prefer60Fps by remember { mutableStateOf(false) }
-    var audioFormat by remember { mutableStateOf(settings.defaultAudioFormat) }
-    var bitrate by remember { mutableStateOf(settings.defaultMp3Bitrate) }
     var advanced by remember { mutableStateOf(false) }
     var playlist by remember { mutableStateOf(false) }
     var playlistStart by remember { mutableStateOf("") }
@@ -90,6 +103,43 @@ internal fun HomeScreen(
     var showLocationDialog by remember { mutableStateOf(false) }
     var dialogSelectedUri by remember { mutableStateOf("") }
     var setAsDefaultChecked by remember { mutableStateOf(true) }
+
+    // Hoisted so the non-composable lambdas below never have to read resources from LocalContext.
+    val enterUrlMessage = stringResource(R.string.error_enter_url)
+    val analyzeRequiredMessage = stringResource(R.string.home_quality_requires_analysis)
+
+    /**
+     * Runs the real media probe for [target]. Only formats that actually exist are offered
+     * afterwards (see [QuickDownloadPlanner]).
+     */
+    fun analyze(target: String) {
+        val normalized = ShareUrlParser.normalize(target)
+        if (normalized == null) {
+            validation = enterUrlMessage
+            return
+        }
+        validation = ""
+        analysing = true
+        analysis = QuickDownloadState(phase = ProbePhase.ANALYSING, url = normalized)
+        scope.launch {
+            runCatching { onProbe(normalized) }
+                .onSuccess { media ->
+                    analysis = QuickDownloadAnalyzer.ready(media, normalized)
+                }
+                .onFailure {
+                    analysis = QuickDownloadAnalyzer.failed(normalized)
+                }
+            analysing = false
+        }
+    }
+
+    fun selectMode(newMode: MediaMode) {
+        mode = newMode
+        analysis = QuickDownloadAnalyzer.selectMode(analysis, newMode)
+    }
+
+    val analysisReady = analysis.phase == ProbePhase.READY
+    val hasSelection = analysis.selectedVideo != null || analysis.selectedAudio != null
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -205,13 +255,15 @@ internal fun HomeScreen(
                             val clipboard = context.getSystemService(
                                 Context.CLIPBOARD_SERVICE,
                             ) as ClipboardManager
-                            url = clipboard.primaryClip
+                            val pasted = clipboard.primaryClip
                                 ?.getItemAt(0)
                                 ?.coerceToText(context)
                                 ?.toString()
                                 ?.trim()
                                 .orEmpty()
+                            url = pasted
                             validation = ""
+                            if (pasted.isNotBlank()) analyze(pasted)
                         },
                         shape = RoundedCornerShape(10.dp),
                         color = VrkaTokens.AccentContainer,
@@ -237,6 +289,54 @@ internal fun HomeScreen(
             )
         }
 
+        Spacer(Modifier.height(12.dp))
+
+        // Paste → analyse → real qualities with real sizes → download.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            VrkaOutlinedButton(
+                text = stringResource(
+                    if (analysisReady || analysis.phase == ProbePhase.FAILED) {
+                        R.string.home_reanalyze
+                    } else {
+                        R.string.home_analyze
+                    },
+                ),
+                onClick = { analyze(url) },
+                enabled = url.isNotBlank() && !analysing,
+                height = 36.dp,
+            )
+            Text(
+                text = when (analysis.phase) {
+                    ProbePhase.ANALYSING -> stringResource(R.string.quick_analysing)
+                    ProbePhase.FETCHING_INFO -> stringResource(R.string.quick_fetching)
+                    ProbePhase.READING_FORMATS -> stringResource(R.string.quick_reading_formats)
+                    ProbePhase.FAILED -> stringResource(R.string.quick_error_probe)
+                    ProbePhase.READY -> analysis.media?.title.orEmpty()
+                    ProbePhase.IDLE -> stringResource(R.string.home_analyze_hint)
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = when (analysis.phase) {
+                    ProbePhase.FAILED -> VrkaTokens.Error
+                    ProbePhase.READY -> VrkaTokens.TextSecondary
+                    else -> VrkaTokens.TextTertiary
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (analysing) {
+                CircularProgressIndicator(
+                    color = VrkaTokens.Accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+
         Spacer(Modifier.height(18.dp))
 
         VrkaSectionContainer(
@@ -245,7 +345,7 @@ internal fun HomeScreen(
             VrkaSegmentedControl(
                 items = MediaMode.entries,
                 selectedItem = mode,
-                onItemSelected = { mode = it },
+                onItemSelected = { selectMode(it) },
                 label = { stringResource(it.labelRes) },
                 isMonospace = true,
                 modifier = Modifier.padding(top = 8.dp),
@@ -264,16 +364,29 @@ internal fun HomeScreen(
                     color = VrkaTokens.TextTertiary,
                     modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                 )
-                ChoiceRow {
-                    VideoQuality.entries.forEach { item ->
-                        val chipLabel = stringResource(item.labelRes)
-                        VrkaChip(
-                            selected = quality == item,
-                            onClick = { quality = item },
-                            label = chipLabel,
-                            isMonospace = true,
-                        )
-                    }
+                if (analysisReady && analysis.videoOptions.isNotEmpty()) {
+                    QualityChoiceList(
+                        videoOptions = analysis.videoOptions,
+                        audioOptions = emptyList(),
+                        selectedVideo = analysis.selectedVideo,
+                        selectedAudio = null,
+                        onSelectVideo = { analysis = QuickDownloadAnalyzer.selectVideo(analysis, it) },
+                        onSelectAudio = {},
+                        showAudioSection = false,
+                    )
+                } else {
+                    Text(
+                        stringResource(
+                            if (analysisReady) {
+                                R.string.quick_no_formats
+                            } else {
+                                R.string.home_quality_requires_analysis
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                        color = VrkaTokens.TextTertiary,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
                 }
             } else {
                 Text(
@@ -286,92 +399,45 @@ internal fun HomeScreen(
                     color = VrkaTokens.TextTertiary,
                     modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
                 )
-                ChoiceRow {
-                    AudioFormat.entries.forEach { item ->
-                        VrkaChip(
-                            selected = audioFormat == item,
-                            onClick = { audioFormat = item },
-                            label = stringResource(item.labelRes).substringBefore(" ("),
-                            isMonospace = true,
-                        )
-                    }
-                }
-
-                if (audioFormat == AudioFormat.MP3) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(R.string.home_mp3_bitrate),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = VrkaMonoFamily,
-                            letterSpacing = 1.1.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = VrkaTokens.TextTertiary,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
+                if (analysisReady && analysis.audioOptions.isNotEmpty()) {
+                    QualityChoiceList(
+                        videoOptions = emptyList(),
+                        audioOptions = analysis.audioOptions,
+                        selectedVideo = null,
+                        selectedAudio = analysis.selectedAudio,
+                        onSelectVideo = {},
+                        onSelectAudio = { analysis = QuickDownloadAnalyzer.selectAudio(analysis, it) },
+                        showVideoSection = false,
                     )
-                    ChoiceRow {
-                        listOf(320, 256, 224, 192, 160, 128).forEach { item ->
-                            VrkaChip(
-                                selected = bitrate == item,
-                                onClick = { bitrate = item },
-                                label = stringResource(R.string.home_kbps, item),
-                                isMonospace = true,
-                            )
-                        }
-                    }
-                } else if (audioFormat == AudioFormat.OPUS) {
-                    Spacer(Modifier.height(12.dp))
+                } else {
                     Text(
-                        stringResource(R.string.home_audio_quality),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = VrkaMonoFamily,
-                            letterSpacing = 1.1.sp,
-                            fontWeight = FontWeight.Bold,
+                        stringResource(
+                            if (analysisReady) {
+                                R.string.quick_no_formats
+                            } else {
+                                R.string.home_quality_requires_analysis
+                            },
                         ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                         color = VrkaTokens.TextTertiary,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
+                        modifier = Modifier.padding(vertical = 8.dp),
                     )
-                    ChoiceRow {
-                        VrkaChip(
-                            selected = true,
-                            onClick = {},
-                            label = stringResource(R.string.home_prefer_native_opus),
-                            isMonospace = true,
-                        )
-                    }
-                } else if (audioFormat == AudioFormat.WAV) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(R.string.home_audio_quality),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = VrkaMonoFamily,
-                            letterSpacing = 1.1.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = VrkaTokens.TextTertiary,
-                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
-                    )
-                    ChoiceRow {
-                        VrkaChip(
-                            selected = true,
-                            onClick = {},
-                            label = stringResource(R.string.home_source_best_pcm),
-                            isMonospace = true,
-                        )
-                    }
                 }
 
                 Text(
-                    when (audioFormat) {
-                        AudioFormat.MP3 -> stringResource(R.string.home_mp3_help)
-                        AudioFormat.OPUS -> stringResource(R.string.home_opus_help)
-                        AudioFormat.WAV -> stringResource(R.string.home_wav_help)
-                    },
+                    stringResource(
+                        if (analysis.selectedAudio?.codec == AudioFormat.OPUS.codec) {
+                            R.string.home_opus_help
+                        } else {
+                            R.string.home_mp3_help
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                     color = VrkaTokens.TextTertiary,
                     modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
                 )
             }
+
             Spacer(Modifier.height(6.dp))
         }
 
@@ -473,7 +539,8 @@ internal fun HomeScreen(
                     OptionToggle(stringResource(R.string.home_embed_metadata), embedMetadata) {
                         embedMetadata = it
                     }
-                    if (mode == MediaMode.AUDIO && audioFormat != AudioFormat.WAV) {
+                    if (mode == MediaMode.AUDIO) {
+                        // Opus/MP3 support artwork embedding; uncompressed WAV does not.
                         OptionToggle(stringResource(R.string.home_embed_thumbnail), embedThumbnail) {
                             embedThumbnail = it
                         }
@@ -634,12 +701,19 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        val summaryAudioFormat = when {
+            analysis.selectedAudio == null -> AudioFormat.MP3
+            analysis.selectedAudio?.codec == AudioFormat.OPUS.codec -> AudioFormat.OPUS
+            else -> AudioFormat.MP3
+        }
         ConfigurationSummary(
             mode = mode,
-            quality = quality,
-            prefer60Fps = prefer60Fps,
-            audioFormat = audioFormat,
-            bitrate = bitrate,
+            quality = analysis.selectedVideo
+                ?.let { QuickDownloadPlanner.qualityForHeight(it.height) }
+                ?: VideoQuality.BEST,
+            prefer60Fps = prefer60Fps || (analysis.selectedVideo?.fps ?: 0.0) >= 50.0,
+            audioFormat = summaryAudioFormat,
+            bitrate = analysis.selectedAudio?.bitrateKbps ?: settings.defaultMp3Bitrate,
             playlist = playlist,
             playlistStart = playlistStart,
             playlistEnd = playlistEnd,
@@ -657,7 +731,7 @@ internal fun HomeScreen(
         VrkaPrimaryButton(
             text = stringResource(R.string.action_add_queue),
             iconRes = R.drawable.ic_download,
-            enabled = url.isNotBlank(),
+            enabled = url.isNotBlank() && hasSelection && !analysing,
             onClick = {
                 val issue = validateRequest(
                     context = context,
@@ -698,13 +772,19 @@ internal fun HomeScreen(
                 }
 
                 val customHeadersMap = HeaderValidation.parseHeaderPairs(customHeaders)
-                val req = DownloadRequest(
-                    url = url,
-                    mode = mode,
-                    quality = quality,
-                    prefer60Fps = prefer60Fps,
-                    audioFormat = audioFormat,
-                    mp3Bitrate = bitrate,
+
+                // The base request carries the exact yt-dlp format selector of the probed option.
+                val selectedVideo = analysis.selectedVideo
+                val base = QuickDownloadAnalyzer.requestForMode(
+                    analysis.copy(url = url),
+                    mode,
+                )
+                if (base == null) {
+                    validation = analyzeRequiredMessage
+                    return@VrkaPrimaryButton
+                }
+                val req = base.copy(
+                    prefer60Fps = prefer60Fps || (selectedVideo?.fps ?: 0.0) >= 50.0,
                     isPlaylist = playlist,
                     playlistStart = playlistStart.toIntOrNull(),
                     playlistEnd = playlistEnd.toIntOrNull(),

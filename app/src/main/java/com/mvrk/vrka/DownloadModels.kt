@@ -67,8 +67,25 @@ enum class FontPreference(@get:StringRes val labelRes: Int) {
 }
 
 enum class ThemeMode(@get:StringRes val labelRes: Int) {
+    /** Follow the device light/dark setting (default). */
+    AUTO(R.string.settings_theme_auto),
     LIGHT(R.string.settings_theme_light),
-    DARK(R.string.settings_theme_dark),
+    DARK(R.string.settings_theme_dark);
+
+    companion object {
+        /**
+         * Parses the persisted value. Unknown or legacy values fall back to [AUTO] so an
+         * upgraded install adopts the system theme instead of a hard-coded dark theme.
+         */
+        fun fromStorage(value: String?): ThemeMode = when (value) {
+            LIGHT.name -> LIGHT
+            DARK.name -> DARK
+            AUTO.name -> AUTO
+            // Legacy VRKA values.
+            "AMOLED" -> DARK
+            else -> AUTO
+        }
+    }
 }
 
 enum class UpdatePreference(@get:StringRes val labelRes: Int) {

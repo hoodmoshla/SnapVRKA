@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -38,7 +37,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -52,6 +50,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mvrk.vrka.R
+import com.mvrk.vrka.LocalVrkaColors
 import com.mvrk.vrka.VrkaMonoFamily
 import com.mvrk.vrka.VrkaTokens
 import kotlinx.coroutines.Dispatchers
@@ -73,11 +72,12 @@ fun QuickDownloadSheet(
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val isLightTheme = LocalVrkaColors.current.isLight
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
-            .clickable(enabled = false) {},
+            .background(if (isLightTheme) Color(0x59000000) else Color(0xB3000000))
+            .clickable(onClick = onDismiss),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Surface(
@@ -93,18 +93,8 @@ fun QuickDownloadSheet(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(42.dp)
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(VrkaTokens.BorderSubtle),
-                )
-                Spacer(Modifier.height(12.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -250,45 +240,14 @@ private fun ReadyState(
         return
     }
 
-    if (state.videoOptions.isNotEmpty()) {
-        SectionTitle(stringResource(R.string.quick_section_video))
-        state.videoOptions.forEach { option ->
-            QualityRow(
-                title = buildString {
-                    append(option.label)
-                    option.fps?.takeIf { it >= 50 }?.let { append(" · ${it.toInt()} FPS") }
-                },
-                subtitle = option.vcodec?.substringBefore('/'),
-                sizeText = SizeFormatter.format(androidx.compose.ui.platform.LocalContext.current, option.sizeBytes, option.sizeIsApproximate),
-                selected = state.selectedVideo?.videoFormatId == option.videoFormatId &&
-                    state.selectedVideo?.height == option.height,
-                onClick = { onSelectVideo(option) },
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-    }
-
-    if (state.audioOptions.isNotEmpty()) {
-        SectionTitle(stringResource(R.string.quick_section_audio))
-        state.audioOptions.forEach { option ->
-            QualityRow(
-                title = if (option.codec == "opus") {
-                    stringResource(R.string.quick_audio_opus)
-                } else {
-                    stringResource(R.string.quick_audio_mp3, option.bitrateKbps ?: 0)
-                },
-                subtitle = if (option.isNativeCopy && option.codec == "opus") {
-                    stringResource(R.string.quick_audio_opus_native)
-                } else {
-                    null
-                },
-                sizeText = SizeFormatter.format(androidx.compose.ui.platform.LocalContext.current, option.sizeBytes, option.sizeIsApproximate),
-                selected = state.selectedAudio?.codec == option.codec &&
-                    state.selectedAudio?.bitrateKbps == option.bitrateKbps,
-                onClick = { onSelectAudio(option) },
-            )
-        }
-    }
+    QualityChoiceList(
+        videoOptions = state.videoOptions,
+        audioOptions = state.audioOptions,
+        selectedVideo = state.selectedVideo,
+        selectedAudio = state.selectedAudio,
+        onSelectVideo = onSelectVideo,
+        onSelectAudio = onSelectAudio,
+    )
 
     Spacer(Modifier.height(18.dp))
 
@@ -317,76 +276,6 @@ private fun ReadyState(
         )
     }
     Spacer(Modifier.height(8.dp))
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontFamily = VrkaMonoFamily,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.1.sp,
-        ),
-        color = VrkaTokens.TextTertiary,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-}
-
-@Composable
-private fun QualityRow(
-    title: String,
-    subtitle: String?,
-    sizeText: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) VrkaTokens.AccentContainer else VrkaTokens.SurfaceCard,
-        border = BorderStroke(1.dp, if (selected) VrkaTokens.BorderActive else VrkaTokens.BorderSubtle),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = VrkaMonoFamily,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    color = VrkaTokens.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                subtitle?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = VrkaTokens.TextTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Text(
-                text = sizeText,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                color = if (selected) VrkaTokens.AccentLight else VrkaTokens.TextSecondary,
-                maxLines = 1,
-            )
-        }
-    }
 }
 
 @Composable

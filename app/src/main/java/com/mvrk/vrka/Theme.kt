@@ -2,6 +2,7 @@ package com.mvrk.vrka
 
 import android.app.Activity
 import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -205,14 +206,26 @@ fun vrkaTypography(fontFamily: FontFamily): Typography = Typography(
 
 val VrkaTypography = vrkaTypography(SpaceMono)
 
+/**
+ * Resolves the effective dark-mode state.
+ *
+ * [ThemeMode.AUTO] follows the device setting; [ThemeMode.LIGHT] and [ThemeMode.DARK] pin the
+ * theme regardless of the system. Pure function so it can be unit tested.
+ */
+fun resolveDarkMode(themeMode: ThemeMode, systemInDarkTheme: Boolean): Boolean = when (themeMode) {
+    ThemeMode.AUTO -> systemInDarkTheme
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
 @Composable
 fun VrkaTheme(
-    themeMode: ThemeMode = ThemeMode.DARK,
+    themeMode: ThemeMode = ThemeMode.AUTO,
     amoled: Boolean = true,
     fontPreference: FontPreference = FontPreference.VRKA_FONT,
     content: @Composable () -> Unit,
 ) {
-    val isLight = themeMode == ThemeMode.LIGHT
+    val isLight = !resolveDarkMode(themeMode, isSystemInDarkTheme())
     val amoledEffective = amoled && !isLight
     val vrkaColors = when {
         isLight -> LightVrkaColors

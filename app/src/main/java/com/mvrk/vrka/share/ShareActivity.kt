@@ -1,20 +1,25 @@
 package com.mvrk.vrka.share
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvrk.vrka.AppSettings
+import com.mvrk.vrka.DownloadRequest
+import com.mvrk.vrka.DownloadService
 import com.mvrk.vrka.VrkaTheme
 import com.mvrk.vrka.vrkaApplication
 import kotlinx.coroutines.CoroutineScope
@@ -26,9 +31,15 @@ import kotlinx.coroutines.launch
 /**
  * Standalone share-sheet entry point.
  *
- * Receives a link (ACTION_SEND text or ACTION_VIEW data), probes available media formats and
- * presents the Quick Download sheet. It never opens the Home screen first, and the download
- * itself keeps running in the background after this activity is finished.
+ * Responsibilities:
+ *  - receive a link (ACTION_SEND text or ACTION_VIEW data) and extract the URL,
+ *  - probe available media formats with yt-dlp,
+ *  - present the Quick Download sheet,
+ *  - hand the chosen request to the existing [com.mvrk.vrka.VrkaDownloadManager] queue and start
+ *    [DownloadService] so the transfer continues in the background,
+ *  - finish immediately so the user returns to the app that shared the link.
+ *
+ * It deliberately never starts the Home screen and never brings SnapVRKA's main task forward.
  */
 class ShareActivity : ComponentActivity() {
 
@@ -36,10 +47,19 @@ class ShareActivity : ComponentActivity() {
     private val manager by lazy { vrkaApplication.downloads }
     private var currentUrl: String? = null
 
+    /**
+     * Registration must happen before [onStart]; the result is intentionally ignored because
+     * notifications are optional and must never block or delay a download.
+     */
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* no-op: the download already started */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         currentUrl = ShareUrlParser.fromIntent(intent)
+        requestNotificationPermissionIfNeeded()
         render(currentUrl)
     }
 
@@ -56,6 +76,16 @@ class ShareActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (NotificationPermission.shouldRequest(Build.VERSION.SDK_INT, granted)) {
+            runCatching { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
+
     private fun render(url: String?) {
         setContent {
             val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
@@ -68,16 +98,30 @@ class ShareActivity : ComponentActivity() {
                     settings = settings,
                     initialUrl = url,
                     onEnqueue = { request ->
+                        // Hand the job to the existing pipeline and start the foreground service
+                        // while this activity is still in the foreground (Android 12+ requires a
+                        // foreground context to start a dataSync FGS).
                         manager.enqueue(request)
+                        runCatching { DownloadService.start(this) }
                     },
                     onProbe = { target ->
                         manager.ensureRuntimeReady()
                         MediaFormatProbe.probe(target, scope)
                     },
-                    onFinish = { finish() },
+                    onFinish = { finishShareSheet() },
                 )
             }
         }
+    }
+
+    /**
+     * Closing the sheet must land the user back in the app that shared the link.
+     * The activity lives in its own task (`taskAffinity=""`), so a plain finish is enough —
+     * no host-app launching and no artificial delay.
+     */
+    private fun finishShareSheet() {
+        if (isFinishing) return
+        finish()
     }
 }
 
@@ -85,7 +129,7 @@ class ShareActivity : ComponentActivity() {
 private fun ShareContent(
     settings: AppSettings,
     initialUrl: String?,
-    onEnqueue: (com.mvrk.vrka.DownloadRequest) -> Unit,
+    onEnqueue: (DownloadRequest) -> Unit,
     onProbe: suspend (String) -> MediaInfo,
     onFinish: () -> Unit,
 ) {
@@ -99,15 +143,11 @@ private fun ShareContent(
         )
     }
     var attempt by remember { mutableStateOf(0) }
-    var enqueuedRequest by remember { mutableStateOf<com.mvrk.vrka.DownloadRequest?>(null) }
 
     LaunchedEffect(initialUrl, attempt) {
         val url = initialUrl
         if (url == null) {
-            state = state.copy(
-                phase = ProbePhase.FAILED,
-                errorMessage = null,
-            )
+            state = state.copy(phase = ProbePhase.FAILED, errorMessage = null)
             return@LaunchedEffect
         }
         state = state.copy(phase = ProbePhase.ANALYSING, errorMessage = null, media = null)
@@ -115,24 +155,9 @@ private fun ShareContent(
             state = state.copy(phase = ProbePhase.FETCHING_INFO)
             val media = onProbe(url)
             state = state.copy(phase = ProbePhase.READING_FORMATS, media = media)
-            val videos = QuickDownloadPlanner.videoOptions(media)
-            val audios = QuickDownloadPlanner.audioOptions(media)
-            state = state.copy(
-                phase = ProbePhase.READY,
-                media = media,
-                videoOptions = videos,
-                audioOptions = audios,
-                selectedVideo = videos.firstOrNull(),
-                selectedAudio = null,
-            )
+            state = QuickDownloadAnalyzer.ready(media, url)
         }.onFailure {
-            state = state.copy(phase = ProbePhase.FAILED, errorMessage = null)
-        }
-    }
-
-    LaunchedEffect(state.enqueued, enqueuedRequest) {
-        if (state.enqueued) {
-            Handler(Looper.getMainLooper()).postDelayed({ onFinish() }, 900)
+            state = QuickDownloadAnalyzer.failed(url)
         }
     }
 
@@ -140,29 +165,21 @@ private fun ShareContent(
         QuickDownloadSheet(
             state = state,
             onSelectVideo = { option ->
-                state = state.copy(selectedVideo = option, selectedAudio = null)
+                state = QuickDownloadAnalyzer.selectVideo(state, option)
             },
             onSelectAudio = { option ->
-                state = state.copy(selectedAudio = option, selectedVideo = null)
+                state = QuickDownloadAnalyzer.selectAudio(state, option)
             },
             onDownload = {
-                val url = state.url
-                val audio = state.selectedAudio
-                val video = state.selectedVideo
-                val request = when {
-                    audio != null -> QuickDownloadPlanner.audioRequest(url, audio)
-                    video != null -> QuickDownloadPlanner.videoRequest(url, video)
-                    else -> null
-                }
+                val request = QuickDownloadAnalyzer.requestForSelection(state)
                 if (request != null) {
-                    val withLocation = if (!settings.isDownloadLocationConfigured) {
-                        request
-                    } else {
-                        request.copy(destinationTreeUri = settings.outputTreeUri.ifBlank { null })
-                    }
-                    enqueuedRequest = withLocation
-                    runCatching { onEnqueue(withLocation) }
+                    val destination = settings.outputTreeUri.takeIf { it.isNotBlank() }
+                    val ready = request.copy(destinationTreeUri = destination)
+                    runCatching { onEnqueue(ready) }
                     state = state.copy(enqueued = true)
+                    // Enqueue is synchronous; closing right away returns the user to the host app
+                    // while the download keeps running inside DownloadService.
+                    onFinish()
                 }
             },
             onRetry = { attempt += 1 },

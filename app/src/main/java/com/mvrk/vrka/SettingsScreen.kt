@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -174,6 +175,19 @@ internal fun SettingsScreen(
                 isMonospace = true,
             )
 
+            Text(
+                text = stringResource(
+                    when (settings.themeMode) {
+                        ThemeMode.AUTO -> R.string.settings_theme_auto_hint
+                        ThemeMode.LIGHT -> R.string.settings_theme_light_hint
+                        ThemeMode.DARK -> R.string.settings_theme_dark_hint
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                color = VrkaTokens.TextTertiary,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
             Spacer(Modifier.height(10.dp))
             VrkaDivider()
 
@@ -183,7 +197,7 @@ internal fun SettingsScreen(
             ) {
                 Switch(
                     checked = settings.amoled,
-                    enabled = settings.themeMode == ThemeMode.DARK,
+                    enabled = resolveDarkMode(settings.themeMode, isSystemInDarkTheme()),
                     onCheckedChange = { scope.launch { repository.setAmoled(it) } },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,

@@ -1,0 +1,6 @@
+<resources>
+    <!-- Dark counterpart of vrka_window_background / splash colours (see values/colors.xml). -->
+    <color name="vrka_window_background">#FF000000</color>
+    <color name="vrka_splash_background">#FF000000</color>
+    <color name="vrka_splash_icon_background">#FF000000</color>
+</resources>

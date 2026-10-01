@@ -2,28 +2,35 @@
     <style name="Theme.VRKA" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowBackground">@color/vrka_window_background</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 
-    <!-- Translucent, non-fullscreen theme for the Quick Download share sheet. -->
-    <style name="Theme.SnapVRKA.Transparent" parent="android:style/Theme.Material.NoActionBar">
+    <!--
+      Quick Download share sheet.
+
+      This is a FULL-SCREEN translucent window (windowIsFloating=false) so the host app
+      (YouTube, X, ...) stays visible behind the sheet and the sheet itself is anchored to the
+      bottom of the real screen. A floating window would be laid out as a small centered dialog,
+      which pushed the sheet content into the middle of the screen.
+    -->
+    <style name="Theme.SnapVRKA.ShareSheet" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:colorBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
-        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsFloating">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
         <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowDisablePreview">true</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 </resources>
-

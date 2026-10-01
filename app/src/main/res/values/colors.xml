@@ -2,4 +2,9 @@
     <color name="vrka_purple">#6F30D5</color>
     <color name="vrka_icon_background">#000000</color>
     <color name="vrka_black">#000000</color>
+    <!-- Window background follows the system so a LIGHT/AUTO user never sees a black flash. -->
+    <color name="vrka_window_background">#FFF6F6F8</color>
+    <color name="vrka_window_background_dark">#FF000000</color>
+    <color name="vrka_splash_background">#FFF6F6F8</color>
+    <color name="vrka_splash_icon_background">#FFF6F6F8</color>
 </resources>

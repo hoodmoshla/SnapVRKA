@@ -87,6 +87,10 @@
 
     <!-- Home -->
     <string name="home_url_hint">أدخل رابط الوسائط...</string>
+    <string name="home_analyze">تحليل الرابط</string>
+    <string name="home_reanalyze">إعادة التحليل</string>
+    <string name="home_analyze_hint">الصق رابطًا ثم اضغط «تحليل الرابط»</string>
+    <string name="home_quality_requires_analysis">حلّل الرابط أولًا لعرض الجودات والأحجام المتوفرة</string>
     <string name="home_video_resolution">دقة الفيديو</string>
     <string name="home_audio_format">صيغة الصوت</string>
     <string name="home_mp3_bitrate">معدل بت MP3</string>
@@ -223,8 +227,12 @@
     <string name="settings_amoled_black">أسود AMOLED</string>
     <string name="settings_amoled_subtitle">استخدام خلفيات سوداء نقية عند تفعيل الوضع الداكن</string>
     <string name="settings_font">الخط</string>
+    <string name="settings_theme_auto">تلقائي</string>
     <string name="settings_theme_light">فاتح</string>
     <string name="settings_theme_dark">داكن</string>
+    <string name="settings_theme_auto_hint">يتبع مظهر النظام تلقائيًا</string>
+    <string name="settings_theme_light_hint">يستخدم المظهر الفاتح دائمًا</string>
+    <string name="settings_theme_dark_hint">يستخدم المظهر الداكن دائمًا</string>
     <string name="settings_font_vrka">خط SnapVRKA</string>
     <string name="settings_font_system">خط النظام</string>
     <string name="settings_save_use_selected">استخدام المحدد</string>

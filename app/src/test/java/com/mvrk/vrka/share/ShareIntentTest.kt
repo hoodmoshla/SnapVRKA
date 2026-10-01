@@ -60,12 +60,15 @@ class ShareIntentTest {
 
     @Test
     fun notificationPermissionDoesNotGateDownloads() {
-        // POST_NOTIFICATIONS is declared but the share activity never blocks on it.
+        // POST_NOTIFICATIONS is declared and requested, but never blocks the download path:
+        // the share activity must not use the "hold the request until permission is granted"
+        // pattern that MainActivity's Home flow uses.
         assertTrue(manifest.contains("android.permission.POST_NOTIFICATIONS"))
         val shareActivity = File("src/main/java/com/mvrk/vrka/share/ShareActivity.kt")
             .readText(Charsets.UTF_8)
-        assertFalse(shareActivity.contains("POST_NOTIFICATIONS"))
-        assertFalse(shareActivity.contains("requestPermission"))
+        assertTrue(shareActivity.contains("POST_NOTIFICATIONS"))
+        assertFalse(shareActivity.contains("pendingRequest"))
+        assertFalse(shareActivity.contains("needsPermission"))
     }
 
     @Test

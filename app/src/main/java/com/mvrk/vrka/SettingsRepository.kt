@@ -21,7 +21,8 @@ import java.io.IOException
 private val Context.vrkaDataStore by preferencesDataStore(name = "vrka_settings")
 
 data class AppSettings(
-    val themeMode: ThemeMode = ThemeMode.DARK,
+    // SnapVRKA follows the device theme by default; the choice is persisted in DataStore.
+    val themeMode: ThemeMode = ThemeMode.AUTO,
     val amoled: Boolean = true,
     val fontPreference: FontPreference = FontPreference.VRKA_FONT,
     val saveLocationMode: SaveLocationMode = SaveLocationMode.REMEMBER_LOCATION,
@@ -132,11 +133,11 @@ class SettingsRepository(
     private fun mapSettings(preferences: Preferences): AppSettings {
         val storedTheme = preferences[Keys.themeMode]
         val themeMode = when {
-            storedTheme == ThemeMode.LIGHT.name -> ThemeMode.LIGHT
-            storedTheme == ThemeMode.DARK.name -> ThemeMode.DARK
-            storedTheme == "AMOLED" -> ThemeMode.DARK
+            storedTheme != null -> ThemeMode.fromStorage(storedTheme)
+            // Legacy installs only stored a dark-theme boolean.
             preferences[Keys.darkTheme] == false -> ThemeMode.LIGHT
-            else -> ThemeMode.DARK
+            preferences[Keys.darkTheme] == true -> ThemeMode.DARK
+            else -> ThemeMode.AUTO
         }
         val amoled = preferences[Keys.amoled]
             ?: (storedTheme == "AMOLED" ||
