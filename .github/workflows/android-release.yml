@@ -93,58 +93,81 @@ jobs:
       - name: Lint (release variant)
         run: ./gradlew :app:lintRelease --stacktrace
 
-      - name: Assemble release APK
-        if: steps.signing.outputs.has_signing == 'true'
+      - name: Assemble APK
         env:
-          VRKA_SIGNING_PROPERTIES: ${{ env.VRKA_SIGNING_PROPERTIES }}
-        run: ./gradlew :app:assembleRelease --stacktrace
+          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_SIGNING" = "true" ]; then
+            echo "Signing material detected: building the signed release APK."
+            ./gradlew :app:assembleRelease --stacktrace
+          else
+            echo "::warning::Release signing secrets are not configured, so a signed release APK cannot be produced. Falling back to the debug variant so this workflow still uploads an installable APK."
+            ./gradlew :app:assembleDebug --stacktrace
+          fi
 
-      - name: Assemble debug APK (unsigned fallback for review only)
-        if: steps.signing.outputs.has_signing != 'true'
-        run: ./gradlew :app:assembleDebug --stacktrace
-
-      - name: Verify release APK identity and signature
-        if: steps.signing.outputs.has_signing == 'true'
+      - name: Collect and verify the APK Gradle produced
+        id: apk
+        env:
+          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
           APKSIGNER="$(ls "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort | tail -1)"
           AAPT2="$(ls "$SDK_ROOT"/build-tools/*/aapt2 2>/dev/null | sort | tail -1)"
 
-          OUT="app/build/outputs/apk/release"
-          SRC="$(ls "$OUT"/*.apk | head -1)"
+          if [ "$HAS_SIGNING" = "true" ]; then
+            VARIANT_DIR="app/build/outputs/apk/release"
+            APK_NAME="SnapVRKA-v1.0.0.apk"
+          else
+            VARIANT_DIR="app/build/outputs/apk/debug"
+            APK_NAME="SnapVRKA-v1.0.0-debug.apk"
+          fi
+
+          # Capture the APK Gradle actually produced (never a hard-coded file name).
+          SRC="$(find "$VARIANT_DIR" -maxdepth 1 -type f -name '*.apk' 2>/dev/null | head -1)"
+          if [ -z "$SRC" ]; then
+            SRC="$(find app/build/outputs/apk -type f -name '*.apk' 2>/dev/null | head -1)"
+          fi
+          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
+            echo "::error::Gradle produced no APK under app/build/outputs/apk"
+            find app/build/outputs -type f 2>/dev/null | head -50 || true
+            exit 1
+          fi
+
           mkdir -p artifacts
-          cp "$SRC" "artifacts/SnapVRKA-v1.0.0.apk"
+          rm -f artifacts/*.apk artifacts/*.apk.sha256
+          cp "$SRC" "artifacts/$APK_NAME"
+          echo "Collected  : $SRC"
+          echo "Artifact APK: artifacts/$APK_NAME"
+          echo "APK size    : $(stat -c%s "artifacts/$APK_NAME") bytes"
+
           cd artifacts
+          "$AAPT2" dump badging "$APK_NAME" > badging.txt
+          grep -E "^package:" badging.txt
+          grep -E "^application-label:|^application-debuggable" badging.txt || true
 
-          echo "Verifying SnapVRKA-v1.0.0.apk"
-          "$APKSIGNER" verify --verbose --print-certs SnapVRKA-v1.0.0.apk | tee apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK_NAME" | tee apksigner.txt
 
-          BADGING="$(unzip -p SnapVRKA-v1.0.0.apk AndroidManifest.xml > /dev/null 2>&1 && echo ok)"
-          echo "manifest-entry=$BADGING"
+          if [ "$HAS_SIGNING" = "true" ]; then
+            grep -q "^package: name='com.hoodmoshla.snapvrka' versionCode='10000' versionName='1.0.0'" badging.txt
+            echo "Verified applicationId/versionName/versionCode for the signed release APK."
+          fi
 
-          echo "--- badging ---"
-          "$AAPT2" dump badging SnapVRKA-v1.0.0.apk | head -20
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+          cat "$APK_NAME.sha256"
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$(stat -c%s "$APK_NAME")" >> "$GITHUB_OUTPUT"
 
-          sha256sum SnapVRKA-v1.0.0.apk > SnapVRKA-v1.0.0.apk.sha256
-          cat SnapVRKA-v1.0.0.apk.sha256
-
-      - name: Collect debug artifact (fallback)
-        if: steps.signing.outputs.has_signing != 'true'
-        run: |
-          mkdir -p artifacts
-          cp "$(ls app/build/outputs/apk/debug/*.apk | head -1)" artifacts/SnapVRKA-v1.0.0-debug.apk
-          sha256sum artifacts/SnapVRKA-v1.0.0-debug.apk > artifacts/SnapVRKA-v1.0.0-debug.apk.sha256
-
-      - name: Upload artifacts
+      - name: Upload the SnapVRKA APK
         uses: actions/upload-artifact@v4
         with:
-          name: SnapVRKA-release
+          name: SnapVRKA-release-apk
           path: |
-            artifacts/SnapVRKA-v1.0.0.apk
-            artifacts/SnapVRKA-v1.0.0.apk.sha256
-            artifacts/apksigner.txt
-          if-no-files-found: warn
+            artifacts/*.apk
+            artifacts/*.apk.sha256
+            artifacts/*.txt
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload test and lint reports
@@ -168,7 +191,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: SnapVRKA-release
+          name: SnapVRKA-release-apk
           path: artifacts
 
       - name: Ensure signed APK is present
