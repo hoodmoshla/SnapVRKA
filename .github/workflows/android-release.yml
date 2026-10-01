@@ -366,5 +366,30 @@ jobs:
 
           gh release edit "$TAG" --latest
 
+          # Final verification goes through the REST API: the JSON it returns is stable across gh
+          # versions, unlike `gh release view --json isLatest`, which older gh builds reject with
+          # 'Unknown JSON field: "isLatest"'.
+          APK_ASSET="$(basename "$APK_PATH")"
+          SHA_ASSET="$(basename "$SHA_FILE")"
+
+          SUMMARY="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '"\(.tag_name)|\(.name)|\(.draft)|\(.prerelease)|\([.assets[].name] | join(","))"')"
+          IFS='|' read -r REL_TAG REL_NAME REL_DRAFT REL_PRERELEASE REL_ASSETS <<< "$SUMMARY"
+
           echo "--- release state ---"
-          gh release view "$TAG" --json tagName,name,isLatest,isPrerelease,assets
+          echo "tag        : $REL_TAG"
+          echo "name       : $REL_NAME"
+          echo "draft      : $REL_DRAFT"
+          echo "prerelease : $REL_PRERELEASE"
+          echo "assets     : $REL_ASSETS"
+
+          verify_fail() { echo "::error::$1"; exit 1; }
+
+          [ "$REL_TAG" = "$TAG" ] || verify_fail "Release tag mismatch: expected '$TAG', GitHub reports '$REL_TAG'."
+          [ "$REL_NAME" = "SnapVRKA $TAG" ] || verify_fail "Release name mismatch: expected 'SnapVRKA $TAG', GitHub reports '$REL_NAME'."
+          [ "$REL_DRAFT" = "false" ] || verify_fail "Release $TAG is still a draft."
+          [ "$REL_PRERELEASE" = "false" ] || verify_fail "Release $TAG is marked as a prerelease."
+          printf '%s\n' "$REL_ASSETS" | tr ',' '\n' | grep -qxF "$APK_ASSET" || verify_fail "Asset '$APK_ASSET' is missing from release $TAG."
+          printf '%s\n' "$REL_ASSETS" | tr ',' '\n' | grep -qxF "$SHA_ASSET" || verify_fail "Asset '$SHA_ASSET' is missing from release $TAG."
+
+          echo "Release $TAG verified: published (not draft/prerelease) with '$APK_ASSET' and '$SHA_ASSET'."
