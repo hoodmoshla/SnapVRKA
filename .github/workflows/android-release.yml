@@ -58,8 +58,10 @@ jobs:
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager --install "platform-tools" "platforms;android-36.1" "platforms;android-36" "build-tools;36.1.0" > /dev/null
 
+      # SnapVRKA must always be signed with the SAME stable release key, otherwise installed
+      # copies could never receive updates. If the secrets are missing the workflow fails with a
+      # clear message instead of silently generating a new keystore or a debug-signed build.
       - name: Provide release signing material
-        id: signing
         env:
           KEYSTORE_B64: ${{ secrets.SNAPVRKA_RELEASE_KEYSTORE_B64 }}
           STORE_PASSWORD: ${{ secrets.SNAPVRKA_RELEASE_STORE_PASSWORD }}
@@ -67,23 +69,35 @@ jobs:
           KEY_PASSWORD: ${{ secrets.SNAPVRKA_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.snapvrka-signing"
-          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${STORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
-            echo "Signing secrets detected."
-            printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.snapvrka-signing/snapvrka-release.keystore"
-            cat > "$HOME/.snapvrka-signing/signing.properties" <<EOF
-          storeFile=$HOME/.snapvrka-signing/snapvrka-release.keystore
+
+          missing=""
+          [ -n "${KEYSTORE_B64:-}" ] || missing="${missing}SNAPVRKA_RELEASE_KEYSTORE_B64 "
+          [ -n "${STORE_PASSWORD:-}" ] || missing="${missing}SNAPVRKA_RELEASE_STORE_PASSWORD "
+          [ -n "${KEY_ALIAS:-}" ] || missing="${missing}SNAPVRKA_RELEASE_KEY_ALIAS "
+          [ -n "${KEY_PASSWORD:-}" ] || missing="${missing}SNAPVRKA_RELEASE_KEY_PASSWORD "
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):${missing}"
+            echo "SnapVRKA releases are always signed with the same stable release key."
+            echo "The workflow intentionally refuses to build instead of creating a new keystore."
+            echo "Add the missing secret(s) under: Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          SIGNING_DIR="$HOME/.snapvrka-signing"
+          mkdir -p "$SIGNING_DIR"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$SIGNING_DIR/snapvrka-release.keystore"
+          cat > "$SIGNING_DIR/signing.properties" <<EOF
+          storeFile=$SIGNING_DIR/snapvrka-release.keystore
           storePassword=$STORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           EOF
-            chmod 600 "$HOME/.snapvrka-signing/signing.properties"
-            echo "VRKA_SIGNING_PROPERTIES=$HOME/.snapvrka-signing/signing.properties" >> "$GITHUB_ENV"
-            echo "has_signing=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Release signing secrets are not configured. Release APK will be skipped."
-            echo "has_signing=false" >> "$GITHUB_OUTPUT"
-          fi
+          chmod 600 "$SIGNING_DIR/signing.properties" "$SIGNING_DIR/snapvrka-release.keystore"
+          echo "VRKA_SIGNING_PROPERTIES=$SIGNING_DIR/signing.properties" >> "$GITHUB_ENV"
+
+          # Never echo the keystore contents or the passwords.
+          echo "Signing material configured for alias '$KEY_ALIAS' ($(stat -c%s "$SIGNING_DIR/snapvrka-release.keystore") keystore bytes)."
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
@@ -93,36 +107,25 @@ jobs:
       - name: Lint (release variant)
         run: ./gradlew :app:lintRelease --stacktrace
 
-      - name: Assemble APK
-        env:
-          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
-        run: |
-          set -euo pipefail
-          if [ "$HAS_SIGNING" = "true" ]; then
-            echo "Signing material detected: building the signed release APK."
-            ./gradlew :app:assembleRelease --stacktrace
-          else
-            echo "::warning::Release signing secrets are not configured, so a signed release APK cannot be produced. Falling back to the debug variant so this workflow still uploads an installable APK."
-            ./gradlew :app:assembleDebug --stacktrace
-          fi
+      - name: Assemble the signed release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
 
       - name: Collect and verify the APK Gradle produced
         id: apk
-        env:
-          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
           APKSIGNER="$(ls "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort | tail -1)"
           AAPT2="$(ls "$SDK_ROOT"/build-tools/*/aapt2 2>/dev/null | sort | tail -1)"
 
-          if [ "$HAS_SIGNING" = "true" ]; then
-            VARIANT_DIR="app/build/outputs/apk/release"
-            APK_NAME="SnapVRKA-v1.0.0.apk"
-          else
-            VARIANT_DIR="app/build/outputs/apk/debug"
-            APK_NAME="SnapVRKA-v1.0.0-debug.apk"
+          VERSION_NAME="$(grep -E '^[[:space:]]*versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::Could not read versionName from app/build.gradle.kts"
+            exit 1
           fi
+          APK_NAME="SnapVRKA-v${VERSION_NAME}.apk"
+          APK_PATH="artifacts/$APK_NAME"
+          VARIANT_DIR="app/build/outputs/apk/release"
 
           # Capture the APK Gradle actually produced (never a hard-coded file name).
           SRC="$(find "$VARIANT_DIR" -maxdepth 1 -type f -name '*.apk' 2>/dev/null | head -1)"
@@ -130,34 +133,50 @@ jobs:
             SRC="$(find app/build/outputs/apk -type f -name '*.apk' 2>/dev/null | head -1)"
           fi
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "::error::Gradle produced no APK under app/build/outputs/apk"
+            echo "::error::Gradle produced no release APK under app/build/outputs/apk"
             find app/build/outputs -type f 2>/dev/null | head -50 || true
             exit 1
           fi
 
           mkdir -p artifacts
           rm -f artifacts/*.apk artifacts/*.apk.sha256
-          cp "$SRC" "artifacts/$APK_NAME"
-          echo "Collected  : $SRC"
-          echo "Artifact APK: artifacts/$APK_NAME"
-          echo "APK size    : $(stat -c%s "artifacts/$APK_NAME") bytes"
+          cp "$SRC" "$APK_PATH"
+          echo "Collected   : $SRC"
+          echo "Artifact APK: $APK_PATH"
+          echo "APK size    : $(stat -c%s "$APK_PATH") bytes"
 
           cd artifacts
           "$AAPT2" dump badging "$APK_NAME" > badging.txt
           grep -E "^package:" badging.txt
-          grep -E "^application-label:|^application-debuggable" badging.txt || true
+
+          # Must be the real SnapVRKA package, the expected version, and a non-debuggable build.
+          grep -q "^package: name='com.hoodmoshla.snapvrka' " badging.txt
+          grep -qE "versionName='${VERSION_NAME}'" badging.txt
+          if grep -q "^application-debuggable" badging.txt; then
+            echo "::error::The release APK is debuggable; refusing to publish it."
+            exit 1
+          fi
 
           "$APKSIGNER" verify --verbose --print-certs "$APK_NAME" | tee apksigner.txt
 
-          if [ "$HAS_SIGNING" = "true" ]; then
-            grep -q "^package: name='com.hoodmoshla.snapvrka' versionCode='10000' versionName='1.0.0'" badging.txt
-            echo "Verified applicationId/versionName/versionCode for the signed release APK."
+          # The APK must carry the one and only SnapVRKA release certificate.
+          CERT_SHA256="$(grep -i "certificate SHA-256 digest" apksigner.txt | head -1 | awk '{print $NF}' | tr 'A-F' 'a-f')"
+          EXPECTED_CERT_SHA256="90a91740960b8f47f5bf302d1f13dd804853b73a61613e2eb395fefe72e58f27"
+          if [ "$CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Signing certificate mismatch: expected ${EXPECTED_CERT_SHA256} but the APK was signed with ${CERT_SHA256:-<none>}."
+            echo "Every SnapVRKA build must use the same stable release keystore."
+            exit 1
           fi
+          echo "Signing certificate SHA-256 verified: $CERT_SHA256"
 
           sha256sum "$APK_NAME" > "$APK_NAME.sha256"
           cat "$APK_NAME.sha256"
+
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "apk_size=$(stat -c%s "$APK_NAME")" >> "$GITHUB_OUTPUT"
+          echo "cert_sha256=$CERT_SHA256" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload the SnapVRKA APK
         uses: actions/upload-artifact@v4
@@ -184,33 +203,168 @@ jobs:
   # ---------------------------------------------------------------- release
   release:
     name: Publish GitHub release
+    # Runs only after Build + Test + Verify succeeded, and never for pull requests.
+    # It also runs for branch pushes and manual runs: the tag is derived from the project's
+    # versionName, and an already existing tag/release is updated instead of failing.
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Download artifacts
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Reuse the APK that was already built and verified. Nothing is rebuilt here.
+      - name: Download the verified SnapVRKA-release-apk artifact
         uses: actions/download-artifact@v4
         with:
           name: SnapVRKA-release-apk
-          path: artifacts
+          path: release-assets
 
-      - name: Ensure signed APK is present
+      - name: Resolve tag and assets from the project version
+        id: release
         run: |
           set -euo pipefail
-          if [ ! -f artifacts/SnapVRKA-v1.0.0.apk ]; then
-            echo "::error::Signed release APK is missing; refusing to publish a release."
+
+          APPLICATION_ID="$(grep -E '^[[:space:]]*applicationId[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          VERSION_NAME="$(grep -E '^[[:space:]]*versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          VERSION_CODE="$(grep -E '^[[:space:]]*versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | grep -oE '[0-9]+' | head -1)"
+
+          if [ -z "$APPLICATION_ID" ] || [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
+            echo "::error::Could not read applicationId/versionName/versionCode from app/build.gradle.kts"
             exit 1
           fi
-          ls -la artifacts
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: SnapVRKA ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: true
-          files: |
-            artifacts/SnapVRKA-v1.0.0.apk
-            artifacts/SnapVRKA-v1.0.0.apk.sha256
+          TAG="v${VERSION_NAME}"
+          APK="release-assets/SnapVRKA-v${VERSION_NAME}.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::Signed release APK SnapVRKA-v${VERSION_NAME}.apk is missing from the SnapVRKA-release-apk artifact."
+            ls -la release-assets || true
+            exit 1
+          fi
+
+          SHA_FILE="${APK}.sha256"
+          if [ ! -f "$SHA_FILE" ]; then
+            sha256sum "$APK" > "$SHA_FILE"
+          fi
+
+          echo "Tag      : $TAG"
+          echo "App id   : $APPLICATION_ID"
+          echo "Version  : $VERSION_NAME ($VERSION_CODE)"
+          echo "APK      : $APK ($(stat -c%s "$APK") bytes)"
+          echo "Checksum : $SHA_FILE"
+
+          {
+            echo "tag=$TAG"
+            echo "apk=$APK"
+            echo "sha_file=$SHA_FILE"
+            echo "application_id=$APPLICATION_ID"
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          APPLICATION_ID: ${{ steps.release.outputs.application_id }}
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          VERSION_CODE: ${{ steps.release.outputs.version_code }}
+          APK_PATH: ${{ steps.release.outputs.apk }}
+          SHA_FILE: ${{ steps.release.outputs.sha_file }}
+        run: |
+          set -euo pipefail
+
+          APK_NAME="$(basename "$APK_PATH")"
+          APK_BYTES="$(stat -c%s "$APK_PATH")"
+          APK_MB="$(awk -v b="$APK_BYTES" 'BEGIN { printf "%.1f", b / 1048576 }')"
+          SHA_LINE="$(cat "$SHA_FILE")"
+          CERT_SHA="90a91740960b8f47f5bf302d1f13dd804853b73a61613e2eb395fefe72e58f27"
+
+          cat > RELEASE_NOTES.template.md <<'TEMPLATE'
+          ## SnapVRKA @TAG@
+
+          تطبيق Android لتنزيل الفيديو والصوت: واجهة عربية كاملة، RTL، مشاركة سريعة، اختيار الجودة، وأحجام حقيقية.
+
+          ### الملفات
+
+          | الملف | الحجم |
+          | --- | --- |
+          | @APK_NAME@ | @APK_MB@ MB |
+          | @SHA_NAME@ | ملف تحقق |
+
+          ### التحقق من السلامة (SHA-256)
+
+          ~~~
+          @SHA_LINE@
+          ~~~
+
+          ### تفاصيل البناء
+
+          - applicationId: @APP_ID@
+          - versionName: @VERSION_NAME@ — versionCode: @VERSION_CODE@
+          - minSdk 26 · targetSdk 36 · arm64-v8a
+          - بُني من الـcommit @COMMIT@ عبر GitHub Actions
+          - سجل التشغيل: @RUN_URL@
+
+          ### التثبيت
+
+          1. نزّل ملف APK من قسم Assets أدناه.
+          2. اسمح بتثبيت التطبيقات من مصادر غير معروفة عند الطلب.
+          3. افتح SnapVRKA ثم شارك أي رابط (YouTube / X / TikTok / Instagram …) إليه.
+
+          > نسخة release موقّعة بمفتاح SnapVRKA الرسمي الثابت (APK Signature Scheme v2، شهادة SHA-256: @CERT_SHA@).
+          > كل الإصدارات القادمة تُوقَّع بنفس المفتاح، لذلك يمكن تحديث النسخة المثبّتة دون أي مشكلة توقيع.
+
+          TEMPLATE
+
+          sed \
+            -e "s|@TAG@|${TAG}|g" \
+            -e "s|@APK_NAME@|${APK_NAME}|g" \
+            -e "s|@SHA_NAME@|$(basename "$SHA_FILE")|g" \
+            -e "s|@APK_MB@|${APK_MB}|g" \
+            -e "s|@SHA_LINE@|${SHA_LINE}|g" \
+            -e "s|@APP_ID@|${APPLICATION_ID}|g" \
+            -e "s|@VERSION_NAME@|${VERSION_NAME}|g" \
+            -e "s|@VERSION_CODE@|${VERSION_CODE}|g" \
+            -e "s|@COMMIT@|${GITHUB_SHA}|g" \
+            -e "s|@RUN_URL@|${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}|g" \
+            -e "s|@CERT_SHA@|${CERT_SHA}|g" \
+            RELEASE_NOTES.template.md > RELEASE_NOTES.md
+
+          echo "--- RELEASE_NOTES.md ---"
+          cat RELEASE_NOTES.md
+
+      # Idempotent: a pre-existing tag or release is updated (assets clobbered) instead of failing,
+      # so repeated pushes never break the workflow.
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          APK_PATH: ${{ steps.release.outputs.apk }}
+          SHA_FILE: ${{ steps.release.outputs.sha_file }}
+        run: |
+          set -euo pipefail
+
+          ASSETS=("$APK_PATH" "$SHA_FILE")
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists: refreshing assets and notes."
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$TAG" --title "SnapVRKA $TAG" --notes-file RELEASE_NOTES.md --prerelease=false
+          else
+            echo "Creating release $TAG."
+            CREATE_ARGS=(--title "SnapVRKA $TAG" --notes-file RELEASE_NOTES.md)
+            # Only pin the commit when the tag does not exist yet.
+            if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+              CREATE_ARGS+=(--target "$GITHUB_SHA")
+            fi
+            gh release create "$TAG" "${ASSETS[@]}" "${CREATE_ARGS[@]}"
+          fi
+
+          gh release edit "$TAG" --latest
+
+          echo "--- release state ---"
+          gh release view "$TAG" --json tagName,name,isLatest,isPrerelease,assets
