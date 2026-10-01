@@ -91,6 +91,8 @@ internal fun localizedJobDetail(context: Context, job: DownloadJob): String {
         detail.startsWith("Direct extraction failed", true) -> R.string.detail_starting_fallback
         detail.endsWith("candidate selected; downloading", true) -> R.string.detail_candidate_selected
         detail.equals("Downloading", true) -> R.string.detail_downloading
+        detail.equals("Paused", true) -> R.string.detail_paused
+        detail.equals("Resuming", true) -> R.string.detail_resuming
         detail.equals("Post-processing", true) -> R.string.detail_post_processing
         detail.startsWith("Publishing to Downloads", true) -> R.string.detail_publishing
         detail.startsWith("Downloading via browser network", true) -> R.string.detail_downloading_browser

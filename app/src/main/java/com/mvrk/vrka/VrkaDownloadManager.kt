@@ -48,6 +48,8 @@ class VrkaDownloadManager(
     private val queue = Channel<String>(Channel.UNLIMITED)
     private val persistRequests = Channel<Unit>(Channel.CONFLATED)
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
+    /** Job ids whose transfer is suspended; cleared by [resume]. */
+    private val paused = ConcurrentHashMap.newKeySet<String>()
     private val activeFallbackEngines = ConcurrentHashMap<String, FallbackEngine>()
     private val initialized = AtomicBoolean(false)
     private val store = JobStore(context)
@@ -154,6 +156,47 @@ class VrkaDownloadManager(
         )
         cleanupStaging(jobId)
     }
+
+    /**
+     * Suspends the *same* task without losing progress.
+     *
+     * The running yt-dlp process is stopped, but the job keeps its id, its staging directory and
+     * its partial `.part` file, so [resume] continues from where the transfer stopped. Nothing is
+     * cleaned up here on purpose.
+     */
+    fun pause(jobId: String) {
+        val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
+        if (job.state.isTerminal || job.state == JobState.PAUSED) return
+        paused += jobId
+        activeFallbackEngines.remove(jobId)?.cancel()
+        if (_activeFallback.value?.jobId == jobId) {
+            _activeFallback.value = null
+        }
+        YoutubeDL.getInstance().destroyProcessById(jobId)
+        update(
+            jobId,
+            state = JobState.PAUSED,
+            detail = "Paused",
+            persist = true,
+        )
+    }
+
+    /** Continues the suspended task from its partial file. No new job/task is created. */
+    fun resume(jobId: String) {
+        val job = _jobs.value.firstOrNull { it.id == jobId } ?: return
+        if (job.state != JobState.PAUSED) return
+        paused -= jobId
+        update(
+            jobId,
+            state = JobState.QUEUED,
+            detail = "Resuming",
+            error = "",
+            persist = true,
+        )
+        queue.trySend(jobId)
+    }
+
+    fun isPaused(jobId: String): Boolean = jobId in paused
 
     fun setJobDestination(jobId: String, treeUri: String) {
         val job = current(jobId) ?: return
@@ -286,6 +329,12 @@ class VrkaDownloadManager(
 
             job = current(jobId) ?: return
             var failure = runCatching { downloadOnce(job) }.exceptionOrNull()
+            // A paused transfer stops the yt-dlp process on purpose: the exception is expected and
+            // must not be classified as a failure (nor trigger the browser fallback).
+            if (isPaused(jobId)) {
+                Log.i("VRKA", "Job $jobId paused; keeping staging for resume")
+                return
+            }
             if (failure != null) {
                 Log.e("VRKA", "Direct attempt failed: ${safeError(failure)}")
             }
@@ -318,6 +367,10 @@ class VrkaDownloadManager(
                     persist = true,
                 )
                 failure = runCatching { downloadOnce(job, recoveryAttempt = true) }.exceptionOrNull()
+                if (isPaused(jobId)) {
+                    Log.i("VRKA", "Job $jobId paused during recovery; keeping staging for resume")
+                    return
+                }
                 if (failure != null) {
                     Log.e("VRKA", "Direct recovery failed: ${safeError(failure)}")
                     val retryCategory = classifyDownloadError(failure.message.orEmpty())
@@ -327,8 +380,8 @@ class VrkaDownloadManager(
                 }
             }
 
-            // Failure classification and browser-fallback eligibility
-            if (failure != null && job.request.resolvedMediaUrl == null && !isCancelled(jobId)) {
+            // Failure classification and browser-fallback eligibility (never for a paused job).
+            if (failure != null && job.request.resolvedMediaUrl == null && !isCancelled(jobId) && !isPaused(jobId)) {
                 val errorMessage = failure.message.orEmpty()
                 val latestExecFailure = failure as? DownloadExecutionException
                 val outputTailText = latestExecFailure?.outputTail?.joinToString("\n").orEmpty()
@@ -439,6 +492,11 @@ class VrkaDownloadManager(
 
             if (failure != null) throw failure
         } catch (error: Throwable) {
+            if (isPaused(jobId)) {
+                // Suspended by the user: keep the partial file so resume can continue the task.
+                Log.i("VRKA", "Job $jobId is paused; skipping failure handling and staging cleanup")
+                return
+            }
             Log.e("VRKA", "Download processing for $jobId failed: ${error.message}", error)
             if (!isCancelled(jobId)) {
                 val failureMsg = safeError(error)
@@ -530,7 +588,8 @@ class VrkaDownloadManager(
                 }
 
                 val now = System.currentTimeMillis()
-                if (now - lastUiUpdate >= 250 || progress >= 100f) {
+                // Never let a trailing callback overwrite the PAUSED state after the user paused.
+                if ((now - lastUiUpdate >= 250 || progress >= 100f) && !isPaused(job.id)) {
                     lastUiUpdate = now
                     val detail = when {
                         line.contains("[Merger]", true) ||
@@ -709,7 +768,7 @@ class VrkaDownloadManager(
                     outputFile = stagingFile,
                     directory = directory,
                     maxWorkers = 4,
-                    isCancelled = { isCancelled(job.id) },
+                    isCancelled = { isCancelled(job.id) || isPaused(job.id) },
                     onProgress = { completed, total ->
                         val now = System.currentTimeMillis()
                         if (now - lastUiUpdate >= 250 || completed >= total) {
@@ -737,7 +796,7 @@ class VrkaDownloadManager(
                     destinationFile = directFile,
                     directory = directory,
                     maxWorkers = 4,
-                    isCancelled = { isCancelled(job.id) },
+                    isCancelled = { isCancelled(job.id) || isPaused(job.id) },
                     onProgress = { written, total ->
                         val now = System.currentTimeMillis()
                         if (now - lastUiUpdate >= 250 || (total > 0 && written >= total)) {
@@ -755,7 +814,7 @@ class VrkaDownloadManager(
             outputFile = directFile
         }
 
-        if (isCancelled(job.id)) return
+        if (isCancelled(job.id) || isPaused(job.id)) return
 
         update(
             job.id,
@@ -899,6 +958,10 @@ class VrkaDownloadManager(
         error: String? = null,
         persist: Boolean = false,
     ) {
+        // A task that reaches a terminal state can never stay flagged as paused.
+        if (state != null && state.isTerminal) {
+            paused -= jobId
+        }
         mutate(persist) { list ->
             list.map { job ->
                 if (job.id != jobId) job else job.copy(

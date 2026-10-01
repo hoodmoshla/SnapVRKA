@@ -47,6 +47,7 @@
     <string name="state_browser_fallback">تحليل عبر المتصفح</string>
     <string name="state_downloading">جارٍ التنزيل</string>
     <string name="state_postprocessing">جارٍ الإنهاء</string>
+    <string name="state_paused">متوقف مؤقتًا</string>
     <string name="state_done">اكتمل</string>
     <string name="state_failed">فشل</string>
     <string name="state_cancelled">أُلغي</string>
@@ -69,6 +70,8 @@
     <string name="detail_starting_fallback">فشل الاستخراج المباشر؛ بدء التحليل عبر المتصفح</string>
     <string name="detail_candidate_selected">تم اختيار المصدر؛ جارٍ التنزيل</string>
     <string name="detail_downloading">جارٍ التنزيل</string>
+    <string name="detail_paused">التنزيل متوقف مؤقتًا</string>
+    <string name="detail_resuming">جارٍ استئناف التنزيل</string>
     <string name="detail_post_processing">جارٍ المعالجة النهائية</string>
     <string name="detail_publishing">جارٍ الحفظ في التنزيلات</string>
     <string name="detail_downloading_browser">جارٍ التنزيل عبر شبكة المتصفح</string>
@@ -368,4 +371,8 @@
     <string name="notification_downloading">جارٍ تنزيل %1$s</string>
     <string name="notification_done">اكتمل التنزيل</string>
     <string name="notification_failed">فشل التنزيل</string>
+    <string name="notification_action_pause">إيقاف مؤقت</string>
+    <string name="notification_action_resume">استئناف</string>
+    <string name="notification_completed_title">تم التحميل</string>
+    <string name="notification_completed_text">النقر لفتح SnapVRKA</string>
 </resources>

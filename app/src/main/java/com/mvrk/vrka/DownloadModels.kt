@@ -10,6 +10,8 @@ enum class JobState {
     BROWSER_FALLBACK,
     DOWNLOADING,
     POSTPROCESSING,
+    /** The same task is suspended and can be resumed from where it stopped. */
+    PAUSED,
     DONE,
     FAILED,
     CANCELLED;
@@ -17,8 +19,17 @@ enum class JobState {
     val isTerminal: Boolean
         get() = this == DONE || this == FAILED || this == CANCELLED
 
+    /**
+     * A paused job is still "owned" by the foreground service: keeping it here is what keeps the
+     * notification (with its Resume action) alive while the transfer is suspended.
+     */
     val isForegroundWork: Boolean
-        get() = this == QUEUED || this == PREPARING || this == DOWNLOADING || this == POSTPROCESSING || this == BROWSER_FALLBACK
+        get() = this == QUEUED || this == PREPARING || this == DOWNLOADING ||
+            this == POSTPROCESSING || this == BROWSER_FALLBACK || this == PAUSED
+
+    /** True while the task is running or suspended (i.e. not finished yet). */
+    val isActive: Boolean
+        get() = !isTerminal
 
     @get:StringRes
     val labelRes: Int
@@ -29,6 +40,7 @@ enum class JobState {
             BROWSER_FALLBACK -> R.string.state_browser_fallback
             DOWNLOADING -> R.string.state_downloading
             POSTPROCESSING -> R.string.state_postprocessing
+            PAUSED -> R.string.state_paused
             DONE -> R.string.state_done
             FAILED -> R.string.state_failed
             CANCELLED -> R.string.state_cancelled
