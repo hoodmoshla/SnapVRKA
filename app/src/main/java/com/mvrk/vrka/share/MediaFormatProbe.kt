@@ -34,13 +34,16 @@ object MediaFormatProbe {
         }
 
     private fun runProbe(url: String): MediaInfo {
+        // Reuse the existing request factory (JS runtime + session headers) and ask yt-dlp for the
+        // full metadata document so every format field is available to the quality planner.
         val request = DownloadRequestFactory.info(
             com.mvrk.vrka.DownloadRequest(url = url),
-        )
-        val response = YoutubeDL.getInstance().getInfo(request)
+        ).apply {
+            addOption("--dump-single-json")
+        }
+        val response = YoutubeDL.getInstance().execute(request)
         val json = response.out.orEmpty()
-        val fallbackTitle = response.title
-        return parseMediaInfo(json, fallbackTitle)
+        return parseMediaInfo(json)
             ?: throw IllegalStateException("Empty yt-dlp metadata for $url")
     }
 

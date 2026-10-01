@@ -86,8 +86,10 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      - name: Lint (vital release)
-        run: ./gradlew :app:lintVitalRelease --stacktrace
+      # AGP 9 removed lintVitalRelease; lintRelease is the release-variant lint task.
+      # The module sets abortOnError=false, so warnings never block the release.
+      - name: Lint (release variant)
+        run: ./gradlew :app:lintRelease --stacktrace
 
       - name: Assemble release APK
         if: steps.signing.outputs.has_signing == 'true'

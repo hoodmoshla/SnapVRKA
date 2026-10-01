@@ -147,11 +147,12 @@ fun VrkaRoot(
                     val activeJobs = remember(jobs) { jobs.filterNot { it.state.isTerminal } }
                     val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
 
-                    val handleEnqueue = remember(scope, snackbar) {
+                    val couldNotAddDownload = stringResource(R.string.error_could_not_add)
+                    val handleEnqueue = remember(scope, snackbar, couldNotAddDownload) {
                         { request: DownloadRequest ->
                             runCatching { enqueue(request) }.onFailure { error ->
                                 pendingRequest = null
-                                val message = error.message ?: context.getString(R.string.error_could_not_add)
+                                val message = error.message ?: couldNotAddDownload
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
                             Unit

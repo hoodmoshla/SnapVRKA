@@ -46,6 +46,10 @@ internal fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val upToDateMessage = stringResource(R.string.settings_check_uptodate_version, BuildConfig.VERSION_NAME)
+    val sessionClearedMessage = stringResource(R.string.settings_session_cleared)
+    val sessionClearFailedMessage = stringResource(R.string.settings_session_clear_failed)
+    val diagnosticsCopiedMessage = stringResource(R.string.settings_diagnostics_copied)
     val updateManager = remember { ComponentUpdateManager.getInstance(context) }
     val componentMap by updateManager.components.collectAsStateWithLifecycle()
     val batchState by updateManager.batchState.collectAsStateWithLifecycle()
@@ -59,7 +63,7 @@ internal fun SettingsScreen(
                 is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.settings_check_uptodate_version, BuildConfig.VERSION_NAME),
+                        upToDateMessage,
                         Toast.LENGTH_SHORT,
                     ).show()
                     manualCheckRequested = false
@@ -420,7 +424,7 @@ internal fun SettingsScreen(
                                 scope.launch {
                                     val success = GeckoRuntimeManager.getInstance(context).clearBrowserSession()
                                     isClearingSession = false
-                                    clearSessionMessage = if (success) context.getString(R.string.settings_session_cleared) else context.getString(R.string.settings_session_clear_failed)
+                                    clearSessionMessage = if (success) sessionClearedMessage else sessionClearFailedMessage
                                 }
                             }
                         ) {
@@ -570,7 +574,7 @@ internal fun SettingsScreen(
                                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entry.toFormattedString()))
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.settings_diagnostics_copied),
+                                        diagnosticsCopiedMessage,
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 },

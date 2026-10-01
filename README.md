@@ -55,7 +55,7 @@
 
 ```bash
 ./gradlew :app:testDebugUnitTest
-./gradlew :app:lintVitalRelease
+./gradlew :app:lintRelease
 ./gradlew :app:assembleRelease
 ```
 

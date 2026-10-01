@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.mvrk.vrka.R
 import com.mvrk.vrka.VrkaMonoFamily
 import com.mvrk.vrka.VrkaTokens
 import com.mvrk.vrka.update.AppReleaseInfo

@@ -35,6 +35,11 @@ class SaveLocationTest {
         assertEquals("Downloads/SnapVRKA", OutputPublisher.formatDisplayPath(""))
         assertEquals(
             "Download/SnapVRKA",
+            OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FSnapVRKA"),
+        )
+        // Legacy VRKA folder names are still rendered verbatim so old destinations keep working.
+        assertEquals(
+            "Download/VRKA",
             OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FVRKA"),
         )
         assertEquals(

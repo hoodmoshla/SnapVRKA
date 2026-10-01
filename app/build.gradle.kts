@@ -106,15 +106,21 @@ extensions.configure<ApplicationExtension> {
         }
     }
 
+    // Release builds are minified by default. `-Psnapvrka.minifyRelease=false` produces a
+    // signed, non-debuggable release APK without R8 shrinking (useful on constrained builders).
+    val minifyRelease = providers.gradleProperty("snapvrka.minifyRelease")
+        .map { it.toBoolean() }
+        .getOrElse(true)
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = minifyRelease
             signingConfig = signingConfigs.findByName("release")
-            isShrinkResources = true
+            isShrinkResources = minifyRelease
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

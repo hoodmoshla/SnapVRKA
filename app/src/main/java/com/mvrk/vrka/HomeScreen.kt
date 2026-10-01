@@ -651,6 +651,9 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
+        val invalidHeaderTemplate = stringResource(R.string.error_invalid_header)
+        val invalidHeaderValueTemplate = stringResource(R.string.error_invalid_header_value)
+
         VrkaPrimaryButton(
             text = stringResource(R.string.action_add_queue),
             iconRes = R.drawable.ic_download,
@@ -675,14 +678,14 @@ internal fun HomeScreen(
                     if (k.isNotBlank()) {
                         when (val r = HeaderValidation.validateHeaderName(k)) {
                             is HeaderValidationResult.Invalid -> {
-                                headerError = context.getString(R.string.error_invalid_header, k, r.reason)
+                                headerError = invalidHeaderTemplate.format(k, r.reason)
                                 break
                             }
                             else -> {}
                         }
                         when (val r = HeaderValidation.validateHeaderValue(v)) {
                             is HeaderValidationResult.Invalid -> {
-                                headerError = context.getString(R.string.error_invalid_header_value, k, r.reason)
+                                headerError = invalidHeaderValueTemplate.format(k, r.reason)
                                 break
                             }
                             else -> {}
