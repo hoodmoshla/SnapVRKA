@@ -25,6 +25,10 @@ jobs:
   # ---------------------------------------------------------------- build
   build:
     name: Build, test and verify SnapVRKA
+    # Every release is published from the branch run, and that run creates the version tag.
+    # Creating that tag re-fires this workflow through the `tags: v*` trigger, so tag runs are
+    # skipped: without this the same version would be built and uploaded twice (= self-retrigger).
+    if: ${{ !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
