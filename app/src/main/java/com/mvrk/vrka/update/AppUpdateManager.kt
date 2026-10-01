@@ -3,6 +3,7 @@ package com.mvrk.vrka.update
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -114,10 +115,15 @@ class AppUpdateManager(
         activeCheckJob = scope.launch {
             try {
                 if (!isManual) {
+                    if (!settingsRepository.settings.value.autoUpdateCheck) {
+                        Log.d(TAG, "Automatic update checks are disabled in settings")
+                        _checkState.value = AppUpdateCheckState.Idle
+                        return@launch
+                    }
                     val lastCheck = settingsRepository.getLastAppUpdateCheckTimestamp()
                     val now = System.currentTimeMillis()
-                    if (now - lastCheck < TWENTY_FOUR_HOURS_MS) {
-                        Log.d(TAG, "Skipping background update check; within 24h gate")
+                    if (now - lastCheck < AUTO_CHECK_INTERVAL_MS) {
+                        Log.d(TAG, "Skipping automatic update check; the cached result is still fresh")
                         return@launch
                     }
                 }
@@ -175,12 +181,48 @@ class AppUpdateManager(
 
         _downloadState.value = AppUpdateDownloadState.Downloading(0f, 0L, release.apkSizeBytes)
 
+        scope.launch {
+            try {
+                // The published SHA-256 is fetched *before* downloading so the transfer can never
+                // succeed without something to verify the bytes against.
+                val sha256 = resolvePublishedSha256(release)
+                if (sha256 == null) {
+                    Log.e(TAG, "Release ${release.tagName} publishes no usable SHA-256 checksum")
+                    _downloadState.value = AppUpdateDownloadState.Error(
+                        context.getString(com.mvrk.vrka.R.string.update_sha_missing),
+                        UpdateRejectionReason.SHA256_MISSING,
+                    )
+                    return@launch
+                }
+                context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, sha256)
+                    .apply()
+                enqueueDownloadWorker(release, sha256)
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not prepare the update download: ${e.message}", e)
+                _downloadState.value = AppUpdateDownloadState.Error(
+                    e.message ?: context.getString(com.mvrk.vrka.R.string.update_failed),
+                )
+            }
+        }
+    }
+
+    private suspend fun resolvePublishedSha256(release: AppReleaseInfo): String? {
+        UpdateVerification.normalizeHex(release.apkSha256)?.let { return it }
+        val checksumUrl = release.apkSha256Url?.takeIf { it.isNotBlank() } ?: return null
+        val text = withContext(Dispatchers.IO) { httpGet(checksumUrl) }
+        return UpdateVerification.parseChecksumFile(text, release.apkFileName)
+    }
+
+    private fun enqueueDownloadWorker(release: AppReleaseInfo, sha256: String) {
         runCatching {
             val workManager = WorkManager.getInstance(context)
             val inputData = workDataOf(
                 AppUpdateDownloadWorker.KEY_DOWNLOAD_URL to release.apkDownloadUrl,
                 AppUpdateDownloadWorker.KEY_APK_NAME to release.apkFileName,
                 AppUpdateDownloadWorker.KEY_EXPECTED_SIZE to release.apkSizeBytes,
+                AppUpdateDownloadWorker.KEY_EXPECTED_SHA256 to sha256,
                 AppUpdateDownloadWorker.KEY_TARGET_VERSION to release.version.toString(),
             )
             val workRequest = OneTimeWorkRequestBuilder<AppUpdateDownloadWorker>()
@@ -197,6 +239,103 @@ class AppUpdateManager(
             _downloadState.value = AppUpdateDownloadState.Error(error.message ?: context.getString(com.mvrk.vrka.R.string.update_failed))
         }
     }
+
+    /** versionCode of the running build, used to reject downgrades. */
+    val currentVersionCode: Long by lazy {
+        runCatching {
+            val pm = context.packageManager
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(context.packageName, 0)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+        }.getOrDefault(0L)
+    }
+
+    /** Reads package name, versionCode and signing certificate digests straight from the archive. */
+    fun readApkIdentity(file: File): ApkIdentity? = runCatching {
+        if (!file.isFile || file.length() == 0L) return null
+        val pm = context.packageManager
+        val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+        } ?: return null
+
+        val certDigests = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = archiveInfo.signingInfo
+            val signers = when {
+                signingInfo == null -> null
+                signingInfo.hasMultipleSigners() -> signingInfo.apkContentsSigners
+                else -> signingInfo.signingCertificateHistory
+            }
+            signers?.forEach { certDigests.add(UpdateVerification.sha256Hex(it.toByteArray())) }
+        } else {
+            @Suppress("DEPRECATION")
+            archiveInfo.signatures?.forEach { certDigests.add(UpdateVerification.sha256Hex(it.toByteArray())) }
+        }
+
+        ApkIdentity(
+            packageName = archiveInfo.packageName.orEmpty(),
+            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                archiveInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                archiveInfo.versionCode.toLong()
+            },
+            versionName = archiveInfo.versionName.orEmpty(),
+            signerCertSha256 = certDigests,
+        )
+    }.getOrNull()
+
+    /**
+     * Runs the complete trust chain on a downloaded APK and, only when it passes, hands it to the
+     * Android package installer. Returns the verification outcome so the UI can explain a refusal.
+     */
+    fun installVerifiedApk(
+        file: File,
+        expectedSha256: String?,
+        expectedSizeBytes: Long = 0L,
+    ): UpdateVerificationResult {
+        _downloadState.value = AppUpdateDownloadState.Verifying
+        val actualSha256 = UpdateVerification.sha256Hex(file)
+        val result = UpdateVerification.verify(
+            identity = readApkIdentity(file),
+            fileSizeBytes = if (file.exists()) file.length() else 0L,
+            actualSha256 = actualSha256,
+            expectedSha256 = expectedSha256,
+            currentVersionCode = currentVersionCode,
+            expectedSizeBytes = expectedSizeBytes,
+        )
+        return when (result) {
+            is UpdateVerificationResult.Trusted -> {
+                Log.i(TAG, "Update verified (sha256 + package + signature + versionCode); launching installer")
+                installApk(file)
+                result
+            }
+            is UpdateVerificationResult.Rejected -> {
+                Log.e(TAG, "Update rejected: ${result.reason} - ${result.detail}")
+                runCatching { if (file.exists()) file.delete() }
+                _downloadState.value = AppUpdateDownloadState.Error(result.detail, result.reason)
+                result
+            }
+        }
+    }
+
+    /** The SHA-256 that the completed download was verified against. */
+    fun expectedSha256ForPendingUpdate(): String? = UpdateVerification.normalizeHex(
+        context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, null),
+    )
 
     fun installApk(file: File) {
         try {
@@ -356,6 +495,12 @@ class AppUpdateManager(
         private const val DEFAULT_API_ENDPOINT =
             "https://api.github.com/repos/hoodmoshla/SnapVRKA/releases/latest"
         const val TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000L // 86,400,000 ms
+
+        /**
+         * Minimum age of a cached check before an *automatic* check may run again
+         * (app launch or return to foreground). Manual checks always bypass this.
+         */
+        const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6 hours
         private const val CONNECT_TIMEOUT_MS = 6000
         private const val READ_TIMEOUT_MS = 6000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 30000
@@ -445,7 +590,10 @@ class AppUpdateManager(
 
             val assets = json.optJSONArray("assets") ?: return null
             var chosenAsset: JSONObject? = null
+            var checksumAsset: JSONObject? = null
+            val deltaAssets = mutableListOf<ReleaseAsset>()
             val expectedVersionApk = "SnapVRKA-v$version.apk"
+            val expectedChecksumApk = "$expectedVersionApk.sha256"
 
             // APK asset selection must require the expected SnapVRKA APK naming convention:
             // SnapVRKA-vX.Y.Z.apk. Reject unrelated APK assets (including legacy VRKA-Android APKs).
@@ -474,6 +622,31 @@ class AppUpdateManager(
             val apkFileName = asset.optString("name", expectedVersionApk)
             val apkSizeBytes = asset.optLong("size", 0L)
 
+            // Second pass: checksum + optional delta assets for the chosen APK.
+            for (i in 0 until assets.length()) {
+                val candidate = assets.getJSONObject(i)
+                val candidateName = candidate.optString("name", "")
+                val candidateUrl = candidate.optString("browser_download_url", "")
+                if (!candidateUrl.startsWith("https://", ignoreCase = true)) continue
+                if (runCatching { validateHttpsUrl(candidateUrl) }.isFailure) continue
+
+                when {
+                    candidateName.equals("$apkFileName.sha256", ignoreCase = true) ||
+                        candidateName.equals(expectedChecksumApk, ignoreCase = true) ->
+                        checksumAsset = candidate
+
+                    candidateName.endsWith(".delta", ignoreCase = true) ->
+                        deltaAssets.add(
+                            ReleaseAsset(
+                                fileName = candidateName,
+                                downloadUrl = candidateUrl,
+                                sizeBytes = candidate.optLong("size", 0L),
+                                sha256 = null,
+                            ),
+                        )
+                }
+            }
+
             return AppReleaseInfo(
                 tagName = tagName,
                 version = version,
@@ -483,6 +656,10 @@ class AppUpdateManager(
                 apkDownloadUrl = apkDownloadUrl,
                 apkFileName = apkFileName,
                 apkSizeBytes = apkSizeBytes,
+                apkSha256Url = checksumAsset?.optString("browser_download_url", "")?.takeIf { it.isNotBlank() },
+                apkSha256 = null,
+                htmlUrl = json.optString("html_url", ""),
+                deltaAssets = deltaAssets,
             )
         }
     }

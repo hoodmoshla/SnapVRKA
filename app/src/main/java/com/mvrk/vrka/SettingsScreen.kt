@@ -764,6 +764,25 @@ internal fun SettingsScreen(
                     height = 32.dp,
                 )
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            VrkaDivider()
+
+            VrkaSettingRow(
+                title = stringResource(R.string.settings_auto_update_check),
+                subtitle = stringResource(R.string.settings_auto_update_check_subtitle),
+            ) {
+                Switch(
+                    checked = settings.autoUpdateCheck,
+                    onCheckedChange = { enabled ->
+                        scope.launch { repository.setAutoUpdateCheck(enabled) }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = VrkaTokens.Accent,
+                    ),
+                )
+            }
         }
         Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }

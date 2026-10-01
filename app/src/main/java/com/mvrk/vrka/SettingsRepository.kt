@@ -33,6 +33,8 @@ data class AppSettings(
     val defaultAudioFormat: AudioFormat = AudioFormat.MP3,
     val defaultMp3Bitrate: Int = 320,
     val updatePreference: UpdatePreference = UpdatePreference.STABLE,
+    /** Smart automatic app-update checks (app launch + return to foreground). */
+    val autoUpdateCheck: Boolean = true,
     val concurrency: Int = 1,
     val adBlocking: Boolean = true,
 )
@@ -54,6 +56,7 @@ class SettingsRepository(
         val defaultAudio = stringPreferencesKey("default_audio")
         val defaultBitrate = intPreferencesKey("default_bitrate")
         val updatePreference = stringPreferencesKey("update_preference")
+        val autoUpdateCheck = booleanPreferencesKey("auto_update_check")
         val concurrency = intPreferencesKey("concurrency")
         val adBlocking = booleanPreferencesKey("ad_blocking")
         val lastAppUpdateCheckTimestamp = longPreferencesKey("last_app_update_check_timestamp")
@@ -100,6 +103,8 @@ class SettingsRepository(
 
     suspend fun setUpdatePreference(value: UpdatePreference) =
         update(Keys.updatePreference, value.name)
+
+    suspend fun setAutoUpdateCheck(value: Boolean) = update(Keys.autoUpdateCheck, value)
 
     suspend fun setConcurrency(value: Int) =
         update(Keys.concurrency, value.coerceIn(1, 2))
@@ -169,6 +174,7 @@ class SettingsRepository(
                 preferences[Keys.updatePreference],
                 UpdatePreference.STABLE,
             ),
+            autoUpdateCheck = preferences[Keys.autoUpdateCheck] ?: true,
             concurrency = (preferences[Keys.concurrency] ?: 1).coerceIn(1, 2),
             adBlocking = preferences[Keys.adBlocking] ?: true,
         )

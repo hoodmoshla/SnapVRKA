@@ -34,6 +34,14 @@ data class SemanticVersion(
     }
 }
 
+/** A publishable artifact attached to a release (full APK or a future delta patch). */
+data class ReleaseAsset(
+    val fileName: String,
+    val downloadUrl: String,
+    val sizeBytes: Long,
+    val sha256: String? = null,
+)
+
 data class AppReleaseInfo(
     val tagName: String,
     val version: SemanticVersion,
@@ -43,7 +51,17 @@ data class AppReleaseInfo(
     val apkDownloadUrl: String,
     val apkFileName: String,
     val apkSizeBytes: Long,
-)
+    /** URL of the published `<apk>.sha256` asset, when the release provides one. */
+    val apkSha256Url: String? = null,
+    /** Checksum for the APK, resolved from the release name when GitHub exposes it. */
+    val apkSha256: String? = null,
+    val htmlUrl: String = "",
+    /** Delta patches published alongside the APK (currently none). */
+    val deltaAssets: List<ReleaseAsset> = emptyList(),
+) {
+    /** True when the release carries everything needed for a fully verified install. */
+    val isVerifiable: Boolean get() = !apkSha256Url.isNullOrBlank() || !apkSha256.isNullOrBlank()
+}
 
 sealed interface AppUpdateCheckState {
     data object Idle : AppUpdateCheckState
@@ -55,12 +73,21 @@ sealed interface AppUpdateCheckState {
 
 sealed interface AppUpdateDownloadState {
     data object Idle : AppUpdateDownloadState
+
     data class Downloading(
         val progress: Float,
         val downloadedBytes: Long,
         val totalBytes: Long,
     ) : AppUpdateDownloadState
+
+    /** The bytes are on disk; SHA-256 / package / signature / version are being checked. */
+    data object Verifying : AppUpdateDownloadState
+
     data class ReadyToInstall(val file: File) : AppUpdateDownloadState
     data object Installing : AppUpdateDownloadState
-    data class Error(val message: String) : AppUpdateDownloadState
+
+    data class Error(
+        val message: String,
+        val reason: UpdateRejectionReason? = null,
+    ) : AppUpdateDownloadState
 }

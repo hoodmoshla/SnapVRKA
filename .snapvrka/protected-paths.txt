@@ -1,0 +1,20 @@
+# SnapVRKA-owned files and the exact marker that must survive every upstream merge.
+#
+# Format:  <path>|<required marker>|<what it protects>
+# Lines starting with '#' and blank lines are ignored.
+#
+# .github/scripts/verify-snapvrka-identity.sh fails the sync when any marker is missing, which is
+# how "upstream overwrote one of our changes" becomes a hard error instead of a silent regression.
+#
+app/build.gradle.kts|applicationId = "com.hoodmoshla.snapvrka"|SnapVRKA application identity
+settings.gradle.kts|rootProject.name = "SnapVRKA"|project name
+app/src/main/res/values/strings.xml|<string name="app_name">SnapVRKA</string>|Arabic branding shown to the user
+app/src/main/AndroidManifest.xml|android:supportsRtl="true"|RTL support
+app/src/main/java/com/mvrk/vrka/share/ShareActivity.kt|class ShareActivity|Quick Share sheet
+app/src/main/java/com/mvrk/vrka/share/QuickDownloadAnalyzer.kt|object QuickDownloadAnalyzer|probe-driven quality selection
+app/src/main/java/com/mvrk/vrka/share/ShareUrlParser.kt|object ShareUrlParser|share link parsing
+app/src/main/java/com/mvrk/vrka/update/UpdateVerification.kt|PINNED_CERT_SHA256|in-app update trust chain
+app/src/main/java/com/mvrk/vrka/update/AppUpdateManager.kt|hoodmoshla/SnapVRKA|update source repository
+app/src/main/java/com/mvrk/vrka/DownloadModels.kt|PAUSED|pause/resume notification support
+app/src/main/java/com/mvrk/vrka/Theme.kt|ThemeMode.AUTO|light/dark/auto theme system
+.github/workflows/android-release.yml|SNAPVRKA_RELEASE_KEYSTORE_B64|stable release signing

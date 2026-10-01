@@ -59,6 +59,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvrk.vrka.ui.AppUpdateDialog
 import com.mvrk.vrka.update.AppUpdateCheckState
@@ -85,8 +86,15 @@ fun VrkaRoot(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        manager.appUpdateManager.checkForUpdate(isManual = false)
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
+    }
+
+    // Smart automatic check: on launch *and* every time the app returns to the foreground.
+    // AppUpdateManager gates this behind the user setting plus a cached interval, so it never
+    // hits the network repeatedly.
+    LifecycleStartEffect(Unit) {
+        manager.appUpdateManager.checkForUpdate(isManual = false)
+        onStopOrDispose { }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -329,8 +337,15 @@ fun VrkaRoot(
                         onDownloadClick = { manager.appUpdateManager.downloadAndInstall(release) },
                         onDismissClick = manager.appUpdateManager::dismissUpdate,
                         onInstallClick = {
-                            if (appUpdateDownloadState is com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall) {
-                                manager.appUpdateManager.installApk((appUpdateDownloadState as com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall).file)
+                            val ready = appUpdateDownloadState as? com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall
+                            if (ready != null) {
+                                // Re-runs the full trust chain (SHA-256, package, signature,
+                                // versionCode) right before handing the file to the installer.
+                                manager.appUpdateManager.installVerifiedApk(
+                                    file = ready.file,
+                                    expectedSha256 = manager.appUpdateManager.expectedSha256ForPendingUpdate(),
+                                    expectedSizeBytes = release.apkSizeBytes,
+                                )
                             } else {
                                 manager.appUpdateManager.downloadAndInstall(release)
                             }

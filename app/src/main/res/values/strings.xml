@@ -327,6 +327,12 @@
     <string name="update_component_skip">تخطٍّ</string>
     <string name="update_verifying_apk">جارٍ التحقق من ملف APK...</string>
     <string name="update_apk_invalid">ملف APK غير صالح أو غير مكتمل</string>
+    <string name="update_sha_missing">الإصدار لا ينشر بصمة SHA-256؛ تم رفض التحديث</string>
+    <string name="update_verified_success">تم تنزيل التحديث بنجاح وتم التحقق منه</string>
+    <string name="update_install_now">تثبيت الآن</string>
+    <string name="settings_auto_update_check">التحقق من التحديثات تلقائيًا</string>
+    <string name="settings_auto_update_check_subtitle">فحص التحديثات عند فتح التطبيق وعند العودة إليه</string>
+    <string name="settings_update_available_short">يتوفر إصدار جديد v%1$s</string>
 
     <!-- Quick download / share -->
     <string name="quick_title">SnapVRKA</string>

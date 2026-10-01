@@ -245,6 +245,27 @@ fun AppUpdateDialog(
                             }
                         }
                     }
+                    is AppUpdateDownloadState.Verifying -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            CircularProgressIndicator(
+                                color = VrkaTokens.Accent,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(28.dp),
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = stringResource(R.string.update_verifying_apk),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
+                                color = VrkaTokens.TextSecondary,
+                            )
+                        }
+                    }
+
                     is AppUpdateDownloadState.Installing -> {
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(

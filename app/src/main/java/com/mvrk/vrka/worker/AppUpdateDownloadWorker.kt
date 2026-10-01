@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.mvrk.vrka.update.AppUpdateManager
+import com.mvrk.vrka.update.UpdateVerification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -25,6 +26,7 @@ class AppUpdateDownloadWorker(
             ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "Missing APK file name"))
         val targetVersion = inputData.getString(KEY_TARGET_VERSION) ?: ""
         val expectedSizeBytes = inputData.getLong(KEY_EXPECTED_SIZE, 0L)
+        val expectedSha256 = UpdateVerification.normalizeHex(inputData.getString(KEY_EXPECTED_SHA256))
 
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
@@ -126,10 +128,30 @@ class AppUpdateDownloadWorker(
             }
 
             Log.i(TAG, "APK download completed: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
+
+            // ---- Integrity gate: the bytes must match the published SHA-256 before anything else.
+            if (expectedSha256 == null) {
+                targetFile.delete()
+                throw IOException("The release did not publish a SHA-256 checksum; refusing the update.")
+            }
+            if (expectedSizeBytes > 0L && targetFile.length() != expectedSizeBytes) {
+                targetFile.delete()
+                throw IOException(
+                    "Size mismatch: expected $expectedSizeBytes bytes but downloaded ${targetFile.length()} bytes.",
+                )
+            }
+            val actualSha256 = UpdateVerification.sha256Hex(targetFile)
+            if (!UpdateVerification.sha256Matches(expectedSha256, actualSha256)) {
+                targetFile.delete()
+                throw IOException("SHA-256 mismatch: the downloaded APK does not match the published checksum.")
+            }
+            Log.i(TAG, "SHA-256 verified for ${targetFile.name}")
+
             prefs.edit()
                 .putString(KEY_STATE, STATE_READY_TO_INSTALL)
                 .putString(KEY_FILE_PATH, targetFile.absolutePath)
                 .putString(KEY_VERSION, targetVersion)
+                .putString(KEY_EXPECTED_SHA256, expectedSha256)
                 .apply()
 
             Result.success(
@@ -157,6 +179,7 @@ class AppUpdateDownloadWorker(
         const val KEY_DOWNLOAD_URL = "download_url"
         const val KEY_APK_NAME = "apk_name"
         const val KEY_EXPECTED_SIZE = "expected_size"
+        const val KEY_EXPECTED_SHA256 = "expected_sha256"
         const val KEY_TARGET_VERSION = "target_version"
         const val KEY_PROGRESS = "progress"
         const val KEY_DOWNLOADED_BYTES = "downloaded_bytes"
