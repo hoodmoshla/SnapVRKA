@@ -2,6 +2,7 @@ package com.mvrk.vrka.update
 
 import java.io.File
 import java.security.MessageDigest
+import java.util.zip.ZipFile
 
 /**
  * Identity of an APK on disk, as reported by `PackageManager.getPackageArchiveInfo`.
@@ -12,6 +13,7 @@ data class ApkIdentity(
     val versionCode: Long,
     val versionName: String,
     val signerCertSha256: List<String>,
+    val nativeAbis: Set<String> = emptySet(),
 )
 
 enum class UpdateRejectionReason {
@@ -24,6 +26,7 @@ enum class UpdateRejectionReason {
     DOWNGRADE,
     SAME_VERSION,
     UNREADABLE_APK,
+    ABI_MISMATCH,
 }
 
 sealed interface UpdateVerificationResult {
@@ -42,7 +45,8 @@ sealed interface UpdateVerificationResult {
  * 2. the archive is a readable APK,
  * 3. it targets the same package (`com.hoodmoshla.snapvrka`),
  * 4. it is signed with the one and only SnapVRKA release certificate,
- * 5. its versionCode is strictly newer than the installed build (no downgrades).
+ * 5. its versionCode is strictly newer than the installed build (no downgrades),
+ * 6. every native library is arm64-v8a; no other ABI may ride along.
  *
  * Every step is required; a failure at any point rejects the update.
  */
@@ -54,7 +58,27 @@ object UpdateVerification {
     /** The permanent application id. */
     const val EXPECTED_PACKAGE = "com.hoodmoshla.snapvrka"
 
+    /** The only native ABI SnapVRKA ships and accepts. */
+    const val EXPECTED_ABI = "arm64-v8a"
+
     private val HEX_64 = Regex("^[0-9a-f]{64}$")
+    private val NATIVE_LIB = Regex("""^lib/([^/]+)/.+\.so$""")
+
+    /**
+     * Reads native ABIs from an APK archive. Returns null when the file cannot be read as a ZIP,
+     * and an empty set when the archive is valid but contains no native libraries.
+     */
+    fun nativeAbis(file: File): Set<String>? = runCatching {
+        if (!file.isFile || file.length() <= 0L) return null
+        ZipFile(file).use { zip ->
+            zip.entries().asSequence().mapNotNull { entry ->
+                NATIVE_LIB.matchEntire(entry.name)?.groupValues?.getOrNull(1)
+            }.toSet()
+        }
+    }.getOrNull()
+
+    fun hasOnlyExpectedAbi(nativeAbis: Set<String>, expectedAbi: String = EXPECTED_ABI): Boolean =
+        nativeAbis.isNotEmpty() && nativeAbis.all { it == expectedAbi }
 
     /** Normalises `AB:CD:…`, uppercase or spaced hex into bare lowercase hex, or null. */
     fun normalizeHex(value: String?): String? {
@@ -131,6 +155,7 @@ object UpdateVerification {
         expectedPackage: String = EXPECTED_PACKAGE,
         expectedSizeBytes: Long = 0L,
         pinnedCertSha256: String = PINNED_CERT_SHA256,
+        expectedAbi: String = EXPECTED_ABI,
     ): UpdateVerificationResult {
         if (fileSizeBytes <= 0L) {
             return UpdateVerificationResult.Rejected(
@@ -184,6 +209,13 @@ object UpdateVerification {
             return UpdateVerificationResult.Rejected(
                 UpdateRejectionReason.SAME_VERSION,
                 "The update has the same versionCode ($currentVersionCode) as the installed build.",
+            )
+        }
+        if (!hasOnlyExpectedAbi(identity.nativeAbis, expectedAbi)) {
+            val found = identity.nativeAbis.ifEmpty { setOf("<none>") }.sorted().joinToString(", ")
+            return UpdateVerificationResult.Rejected(
+                UpdateRejectionReason.ABI_MISMATCH,
+                "Native ABI mismatch: expected only '$expectedAbi' but the APK contains $found.",
             )
         }
         return UpdateVerificationResult.Trusted

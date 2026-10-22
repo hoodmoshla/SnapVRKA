@@ -7,9 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
- * The in-app update trust chain: SHA-256, package name, signing certificate and versionCode.
+ * The in-app update trust chain: SHA-256, package, certificate, versionCode and arm64-v8a.
  */
 class UpdateVerificationTest {
 
@@ -24,7 +26,8 @@ class UpdateVerificationTest {
         versionCode: Long = 10001L,
         versionName: String = "1.0.1",
         signers: List<String> = listOf(UpdateVerification.PINNED_CERT_SHA256),
-    ) = ApkIdentity(packageName, versionCode, versionName, signers)
+        nativeAbis: Set<String> = setOf(UpdateVerification.EXPECTED_ABI),
+    ) = ApkIdentity(packageName, versionCode, versionName, signers, nativeAbis)
 
     private fun verify(
         identity: ApkIdentity? = identity(),
@@ -223,6 +226,49 @@ class UpdateVerificationTest {
         val rejected = verify(expectedSha = shaA, actualSha = shaB) as UpdateVerificationResult.Rejected
         assertTrue(rejected.detail.contains("SHA-256"))
         assertTrue(rejected.detail.isNotBlank())
+    }
+
+    @Test
+    fun anUpstreamOrForeignAbiIsRejected() {
+        assertEquals(
+            UpdateRejectionReason.ABI_MISMATCH,
+            rejection(verify(identity = identity(nativeAbis = setOf("armeabi-v7a")))),
+        )
+        assertEquals(
+            UpdateRejectionReason.ABI_MISMATCH,
+            rejection(verify(identity = identity(nativeAbis = setOf("arm64-v8a", "x86_64")))),
+        )
+        assertEquals(
+            UpdateRejectionReason.ABI_MISMATCH,
+            rejection(verify(identity = identity(nativeAbis = emptySet()))),
+        )
+    }
+
+    @Test
+    fun nativeAbiScanAcceptsOnlyArm64Libraries() {
+        val apk = tempFolder.newFile("sample.apk")
+        ZipOutputStream(apk.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("lib/arm64-v8a/libsample.so"))
+            zip.write(byteArrayOf(1, 2, 3))
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("assets/readme.txt"))
+            zip.write("not native".toByteArray())
+            zip.closeEntry()
+        }
+        assertEquals(setOf("arm64-v8a"), UpdateVerification.nativeAbis(apk))
+        assertTrue(UpdateVerification.hasOnlyExpectedAbi(UpdateVerification.nativeAbis(apk)!!))
+
+        val mixed = tempFolder.newFile("mixed.apk")
+        ZipOutputStream(mixed.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("lib/arm64-v8a/libsample.so"))
+            zip.write(byteArrayOf(1))
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("lib/x86_64/libsample.so"))
+            zip.write(byteArrayOf(2))
+            zip.closeEntry()
+        }
+        assertFalse(UpdateVerification.hasOnlyExpectedAbi(UpdateVerification.nativeAbis(mixed)!!))
+        assertNull(UpdateVerification.nativeAbis(tempFolder.newFile("empty.apk")))
     }
 
     // ---------------------------------------------------------------- ordering

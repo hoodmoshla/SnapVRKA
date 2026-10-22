@@ -262,6 +262,7 @@ class AppUpdateManager(
     /** Reads package name, versionCode and signing certificate digests straight from the archive. */
     fun readApkIdentity(file: File): ApkIdentity? = runCatching {
         if (!file.isFile || file.length() == 0L) return null
+        val nativeAbis = UpdateVerification.nativeAbis(file) ?: return null
         val pm = context.packageManager
         val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getPackageArchiveInfo(file.absolutePath, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
@@ -294,6 +295,7 @@ class AppUpdateManager(
             },
             versionName = archiveInfo.versionName.orEmpty(),
             signerCertSha256 = certDigests,
+            nativeAbis = nativeAbis,
         )
     }.getOrNull()
 
@@ -318,7 +320,7 @@ class AppUpdateManager(
         )
         return when (result) {
             is UpdateVerificationResult.Trusted -> {
-                Log.i(TAG, "Update verified (sha256 + package + signature + versionCode); launching installer")
+                Log.i(TAG, "Update verified (sha256 + package + signature + versionCode + arm64-v8a); launching installer")
                 installApk(file)
                 result
             }
@@ -600,13 +602,11 @@ class AppUpdateManager(
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val assetName = asset.optString("name", "")
-                if (APK_NAME_PATTERN.matches(assetName)) {
-                    if (assetName.equals(expectedVersionApk, ignoreCase = true)) {
-                        chosenAsset = asset
-                        break
-                    } else if (chosenAsset == null) {
-                        chosenAsset = asset
-                    }
+                if (APK_NAME_PATTERN.matches(assetName) &&
+                    assetName.equals(expectedVersionApk, ignoreCase = true)
+                ) {
+                    chosenAsset = asset
+                    break
                 }
             }
 

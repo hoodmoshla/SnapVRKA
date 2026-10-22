@@ -44,6 +44,23 @@ class SnapVrkaUpdateTest {
     }
 
     @Test
+    fun releaseJsonWithADifferentSnapVrkaVersionAssetIsRejected() {
+        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.0.apk"))
+        assertNull(release)
+    }
+
+    @Test
+    fun releaseJsonFromTheUpstreamRepositoryIsRejected() {
+        val json = releaseJson("v5.0.2", "SnapVRKA-v5.0.2.apk")
+            .replace(
+                "https://github.com/hoodmoshla/SnapVRKA/releases/download/v5.0.2/SnapVRKA-v5.0.2.apk",
+                "https://objects.githubusercontent.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/VRKA-Android-v5.0.2.apk",
+            )
+            .replace("SnapVRKA-v5.0.2.apk", "VRKA-Android-v5.0.2.apk")
+        assertNull(AppUpdateManager.parseReleaseJson(json))
+    }
+
+    @Test
     fun releaseJsonWithNonHttpsDownloadUrlIsRejected() {
         val json = """
             {

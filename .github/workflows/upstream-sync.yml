@@ -1,13 +1,9 @@
 name: Upstream Sync
 
-# Watches the original project (MaverickRox/VRKA-Android) and merges new releases, tags or
-# commits into SnapVRKA without ever dropping SnapVRKA's own changes.
-#
-#   detect upstream  ->  merge  ->  verify SnapVRKA identity  ->  tests  ->  bump version
-#        ->  push  ->  (android-release.yml builds, signs, verifies and publishes the release)
-#
-# It is idempotent: the last merged upstream commit is recorded in .snapvrka/upstream-sync.json, so
-# running it again with no new upstream work exits without touching anything.
+# Detects changes in MaverickRox/VRKA-Android and writes a review report only.
+# It never merges, commits, pushes, bumps a version, builds an APK, or publishes a release.
+# lastSyncedCommit is intentionally left untouched here: it may change only after a separately
+# reviewed and successfully completed sync.
 
 on:
   schedule:
@@ -16,17 +12,13 @@ on:
   workflow_dispatch:
     inputs:
       target_branch:
-        description: "SnapVRKA branch to sync into (empty = value from .snapvrka/upstream-sync.json)"
+        description: "SnapVRKA branch to inspect (empty = value from .snapvrka/upstream-sync.json)"
         required: false
         default: ""
-      force:
-        description: "Continue even when no new upstream commit is detected"
-        required: false
-        type: boolean
-        default: false
+        type: string
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 concurrency:
@@ -34,10 +26,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sync:
-    name: Detect, merge and publish upstream updates
+  detect:
+    name: Detect and summarize upstream changes
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -45,11 +37,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read sync state
+      - name: Read sync state and protected paths
         id: state
         run: |
           set -euo pipefail
           chmod +x .github/scripts/*.sh
+          .github/scripts/verify-snapvrka-identity.sh
 
           UPSTREAM_REPO="$(.github/scripts/sync-state.sh get upstreamRepository)"
           UPSTREAM_BRANCH="$(.github/scripts/sync-state.sh get upstreamBranch)"
@@ -59,8 +52,7 @@ jobs:
           if [ -n "${{ inputs.target_branch }}" ]; then
             TARGET_BRANCH="${{ inputs.target_branch }}"
           fi
-
-          if [ -z "$UPSTREAM_REPO" ] || [ -z "$UPSTREAM_BRANCH" ] || [ -z "$TARGET_BRANCH" ]; then
+          if [ -z "$UPSTREAM_REPO" ] || [ -z "$UPSTREAM_BRANCH" ] || [ -z "$TARGET_BRANCH" ] || [ -z "$LAST_SYNCED" ]; then
             echo "::error::Incomplete sync state in .snapvrka/upstream-sync.json"
             exit 1
           fi
@@ -72,11 +64,7 @@ jobs:
             echo "last_synced=$LAST_SYNCED"
           } >> "$GITHUB_OUTPUT"
 
-          echo "upstream : $UPSTREAM_REPO@$UPSTREAM_BRANCH"
-          echo "target   : $TARGET_BRANCH"
-          echo "last sync: ${LAST_SYNCED:-<none>}"
-
-      - name: Detect upstream updates (commits, tags and releases)
+      - name: Detect upstream changes without merging
         id: upstream
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,179 +72,106 @@ jobs:
           UPSTREAM_BRANCH: ${{ steps.state.outputs.upstream_branch }}
           TARGET_BRANCH: ${{ steps.state.outputs.target_branch }}
           LAST_SYNCED: ${{ steps.state.outputs.last_synced }}
-          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
 
-          # A scheduled run checks out the repository default branch, but the "already synced"
-          # test must run against the branch that actually carries SnapVRKA. Otherwise the
-          # ancestor check would compare against the wrong tree on every run.
           git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          BEFORE_STATE="$(sha256sum .snapvrka/upstream-sync.json | awk '{print $1}')"
+          BEFORE_HEAD="$(git rev-parse HEAD)"
 
           git remote remove upstream 2>/dev/null || true
           git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
           git fetch --no-tags upstream "$UPSTREAM_BRANCH"
-
           UPSTREAM_SHA="$(git rev-parse FETCH_HEAD)"
-          HEAD_SHA="$(git rev-parse HEAD)"
 
-          # Newest upstream release/tag, used for the notes and for release-driven detection.
           LATEST_RELEASE_TAG="$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")"
+          LATEST_RELEASE_DATE="$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.published_at' 2>/dev/null || echo "")"
+          NEW_COMMITS="$(git rev-list --count "${LAST_SYNCED}..${UPSTREAM_SHA}" 2>/dev/null || echo 0)"
 
-          HAS_UPDATE="true"
-          REASON="new upstream commits"
-
-          if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
+          if [ "$UPSTREAM_SHA" = "$LAST_SYNCED" ]; then
             HAS_UPDATE="false"
-            REASON="upstream ${UPSTREAM_SHA:0:8} is already contained in this branch"
-          elif [ -n "$LAST_SYNCED" ] && [ "$UPSTREAM_SHA" = "$LAST_SYNCED" ]; then
-            HAS_UPDATE="false"
-            REASON="upstream is unchanged since the last recorded sync"
-          fi
-
-          if [ "${FORCE:-false}" = "true" ]; then
+            REASON="upstream is unchanged since the last successful sync"
+          else
             HAS_UPDATE="true"
-            REASON="forced run"
+            REASON="new upstream commits detected; review required before any merge"
           fi
 
-          NEW_COMMITS="$(git rev-list --count "HEAD..${UPSTREAM_SHA}" 2>/dev/null || echo 0)"
+          mkdir -p upstream-report
+          {
+            echo "# تقرير مزامنة upstream"
+            echo
+            echo "اكتُشفت الحالة فقط. لم يُدمج شيء، ولم يُرفع شيء، ولم يُبنَ APK، ولم يُنشر Release."
+            echo
+            echo "| الحقل | القيمة |"
+            echo "| --- | --- |"
+            echo "| المستودع الأصلي | \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\` |"
+            echo "| رأس upstream | \`${UPSTREAM_SHA}\` |"
+            echo "| آخر مزامنة ناجحة | \`${LAST_SYNCED}\` |"
+            echo "| فرع SnapVRKA | \`${TARGET_BRANCH}\` |"
+            echo "| آخر إصدار أصلي | \`${LATEST_RELEASE_TAG:-غير معروف}\` ${LATEST_RELEASE_DATE:+($LATEST_RELEASE_DATE)} |"
+            echo "| Commits جديدة | ${NEW_COMMITS} |"
+            echo "| يوجد تحديث | ${HAS_UPDATE} |"
+            echo "| السبب | ${REASON} |"
+            echo
+            echo "## ملخص التغييرات"
+            echo
+            if [ "$HAS_UPDATE" = "true" ]; then
+              git log --no-merges --pretty=format:'- `%h` %s' "${LAST_SYNCED}..${UPSTREAM_SHA}" || true
+              echo
+              echo
+              echo "## الملفات المتأثرة"
+              echo
+              git diff --name-status "${LAST_SYNCED}..${UPSTREAM_SHA}" || true
+            else
+              echo "لا توجد commits جديدة منذ آخر مزامنة ناجحة."
+            fi
+            echo
+            echo "## قرار الدمج"
+            echo
+            echo "إعادة هيكلة VRKA 5.0.2 غير معتمدة للدمج التلقائي: يحافظ SnapVRKA على Puemos وConcurrentTransferEngine ومحركه الحالي."
+          } > upstream-report/upstream-summary.md
+
+          AFTER_STATE="$(sha256sum .snapvrka/upstream-sync.json | awk '{print $1}')"
+          AFTER_HEAD="$(git rev-parse HEAD)"
+          if [ "$BEFORE_STATE" != "$AFTER_STATE" ] || [ "$BEFORE_HEAD" != "$AFTER_HEAD" ]; then
+            echo "::error::Detection changed SnapVRKA state; refusing to continue."
+            exit 1
+          fi
+          if ! git diff --exit-code -- .snapvrka/upstream-sync.json > /dev/null; then
+            echo "::error::lastSyncedCommit must not change during detection."
+            exit 1
+          fi
 
           {
             echo "has_update=$HAS_UPDATE"
             echo "upstream_sha=$UPSTREAM_SHA"
-            echo "head_sha=$HEAD_SHA"
             echo "latest_release_tag=$LATEST_RELEASE_TAG"
             echo "new_commits=$NEW_COMMITS"
             echo "reason=$REASON"
           } >> "$GITHUB_OUTPUT"
 
-          echo "upstream head : $UPSTREAM_SHA"
-          echo "branch head   : $HEAD_SHA"
-          echo "new commits   : $NEW_COMMITS"
-          echo "upstream latest release: ${LATEST_RELEASE_TAG:-<none>}"
-          echo "update        : $HAS_UPDATE ($REASON)"
-
-      - name: Nothing to sync
-        if: steps.upstream.outputs.has_update != 'true'
-        run: |
-          echo "SnapVRKA is already in sync with ${{ steps.state.outputs.upstream_repo }}@${{ steps.state.outputs.upstream_branch }}."
-          echo "Reason: ${{ steps.upstream.outputs.reason }}"
-          echo "No merge, no build, no APK and no release were produced."
-
-      - name: Set up JDK 17 (Temurin)
-        if: steps.upstream.outputs.has_update == 'true'
-        uses: actions/setup-java@v4
+      - name: Upload the detection report
+        uses: actions/upload-artifact@v4
         with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Android SDK
-        if: steps.upstream.outputs.has_update == 'true'
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
-
-      - name: Set up Gradle
-        if: steps.upstream.outputs.has_update == 'true'
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: false
-
-      - name: Install required SDK packages
-        if: steps.upstream.outputs.has_update == 'true'
-        run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-36.1" "platforms;android-36" "build-tools;36.1.0" > /dev/null
-
-      - name: Merge upstream and verify SnapVRKA identity
-        if: steps.upstream.outputs.has_update == 'true'
-        env:
-          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
-          TARGET_BRANCH: ${{ steps.state.outputs.target_branch }}
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/*.sh
-
-          git config user.name "snapvrka-sync"
-          git config user.email "snapvrka-sync@users.noreply.github.com"
-
-          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
-
-          # Snapshot of our identity before the merge, so a regression can be spotted immediately.
-          .github/scripts/verify-snapvrka-identity.sh
-
-          echo "--- merging upstream $UPSTREAM_SHA ---"
-          if ! git merge --no-ff --no-commit "$UPSTREAM_SHA"; then
-            echo "::error::Merge conflict while syncing upstream $UPSTREAM_SHA into $TARGET_BRANCH."
-            echo "Conflicting files:"
-            git diff --name-only --diff-filter=U || true
-            echo ""
-            echo "Upstream commit : $UPSTREAM_SHA"
-            echo "SnapVRKA branch : $TARGET_BRANCH ($(git rev-parse HEAD))"
-            echo "Resolve manually, keeping the SnapVRKA behaviour and re-applying the upstream logic."
-            echo "No APK and no release were produced."
-            git merge --abort || true
-            exit 1
-          fi
-
-          echo "--- verifying SnapVRKA changes survived the merge ---"
-          .github/scripts/verify-snapvrka-identity.sh
-
-      - name: Run the test suite on the merged tree
-        if: steps.upstream.outputs.has_update == 'true'
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
-      - name: Bump the SnapVRKA version
-        if: steps.upstream.outputs.has_update == 'true'
-        id: version
-        run: .github/scripts/bump-version.sh app/build.gradle.kts
-
-      - name: Record the sync state
-        if: steps.upstream.outputs.has_update == 'true'
-        env:
-          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
-          VERSION_NAME: ${{ steps.version.outputs.version_name }}
-          VERSION_CODE: ${{ steps.version.outputs.version_code }}
-        run: |
-          set -euo pipefail
-          .github/scripts/sync-state.sh set \
-            lastSyncedCommit "$UPSTREAM_SHA" \
-            lastSyncedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            snapvrkaVersionName "$VERSION_NAME" \
-            snapvrkaVersionCode "$VERSION_CODE"
-
-      - name: Commit and push the sync
-        if: steps.upstream.outputs.has_update == 'true'
-        env:
-          TARGET_BRANCH: ${{ steps.state.outputs.target_branch }}
-          UPSTREAM_REPO: ${{ steps.state.outputs.upstream_repo }}
-          UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
-          NEW_COMMITS: ${{ steps.upstream.outputs.new_commits }}
-          VERSION_NAME: ${{ steps.version.outputs.version_name }}
-          VERSION_CODE: ${{ steps.version.outputs.version_code }}
-        run: |
-          set -euo pipefail
-
-          git add -A
-          git commit -m "Sync upstream ${UPSTREAM_REPO}@${UPSTREAM_SHA:0:8} and bump to v${VERSION_NAME} (${VERSION_CODE})"
-
-          git push origin "HEAD:$TARGET_BRANCH"
-
-          echo "Pushed the merged tree to $TARGET_BRANCH."
-          echo "android-release.yml now builds, signs, verifies and publishes SnapVRKA v${VERSION_NAME}."
+          name: snapvrka-upstream-summary
+          path: upstream-report/upstream-summary.md
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "## Upstream Sync"
-            echo ""
-            echo "| Field | Value |"
+            echo "## اكتشاف upstream فقط"
+            echo
+            echo "لا يوجد دمج أو دفع أو بناء أو Release من هذا التشغيل."
+            echo
+            echo "| الحقل | القيمة |"
             echo "| --- | --- |"
             echo "| Upstream | \`${{ steps.state.outputs.upstream_repo }}@${{ steps.state.outputs.upstream_branch }}\` |"
-            echo "| Upstream commit | \`${{ steps.upstream.outputs.upstream_sha }}\` |"
-            echo "| New commits | ${{ steps.upstream.outputs.new_commits }} |"
-            echo "| Update detected | ${{ steps.upstream.outputs.has_update }} |"
-            echo "| Reason | ${{ steps.upstream.outputs.reason }} |"
-            echo "| Target branch | \`${{ steps.state.outputs.target_branch }}\` |"
+            echo "| Commit | \`${{ steps.upstream.outputs.upstream_sha }}\` |"
+            echo "| Commits جديدة | ${{ steps.upstream.outputs.new_commits }} |"
+            echo "| تحديث مكتشف | ${{ steps.upstream.outputs.has_update }} |"
+            echo "| السبب | ${{ steps.upstream.outputs.reason }} |"
+            echo "| مؤشر المزامنة | بقي عند \`${{ steps.state.outputs.last_synced }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

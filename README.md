@@ -104,7 +104,7 @@
 - `SNAPVRKA_RELEASE_KEY_ALIAS`
 - `SNAPVRKA_RELEASE_KEY_PASSWORD`
 
-اسم الناتج ثابت: `SnapVRKA-v1.0.0.apk` (ولاحقًا `SnapVRKA-v1.0.1.apk`، `SnapVRKA-v1.1.0.apk` …) مع ملف `SnapVRKA-v1.0.0.apk.sha256`.
+اسم الناتج ثابت: `SnapVRKA-v1.0.1.apk` مع ملف `SnapVRKA-v1.0.1.apk.sha256`.
 
 ---
 
@@ -115,8 +115,8 @@
 | اسم التطبيق | SnapVRKA |
 | applicationId | `com.hoodmoshla.snapvrka` |
 | namespace الداخلي | `com.mvrk.vrka` (لم يُغيَّر لتقليل مخاطر كسر المشروع) |
-| versionName | `1.0.0` |
-| versionCode | `10000` |
+| versionName | `1.0.1` |
+| versionCode | `10001` |
 | minSdk | 26 |
 | targetSdk | 36 |
 | ABI | `arm64-v8a` |

@@ -46,8 +46,8 @@ class ShareIntentTest {
     @Test
     fun applicationIdentityMatchesSnapVrka() {
         assertTrue(gradle.contains("""applicationId = "com.hoodmoshla.snapvrka""""))
-        assertTrue(gradle.contains("""versionName = "1.0.0""""))
-        assertTrue(gradle.contains("versionCode = 10000"))
+        assertTrue(gradle.contains("""versionName = "1.0.1""""))
+        assertTrue(gradle.contains("versionCode = 10001"))
     }
 
     @Test

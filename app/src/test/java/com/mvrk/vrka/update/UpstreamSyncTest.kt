@@ -52,21 +52,18 @@ class UpstreamSyncTest {
     }
 
     @Test
-    fun syncWorkflowIsIdempotentAndConflictSafe() {
+    fun syncWorkflowDetectsOnlyAndNeverMergesOrPublishes() {
         val yaml = syncWorkflow.readText(Charsets.UTF_8)
         assertTrue(syncWorkflow.isFile)
-        // Idempotency: no new commit -> nothing is built or released.
         assertTrue(yaml.contains("has_update"))
-        assertTrue(yaml.contains("git merge-base --is-ancestor"))
-        // Conflict handling: report the files, abort, never publish.
-        assertTrue(yaml.contains("Merge conflict while syncing upstream"))
-        assertTrue(yaml.contains("git diff --name-only --diff-filter=U"))
-        assertTrue(yaml.contains("git merge --abort"))
-        // Protection must run both before and after the merge.
         assertTrue(yaml.contains("verify-snapvrka-identity.sh"))
-        // Never pushes a broken tree: tests must pass first.
-        assertTrue(yaml.contains("testDebugUnitTest"))
-        assertTrue(yaml.indexOf("testDebugUnitTest") < yaml.indexOf("git push origin"))
+        assertTrue(yaml.contains("lastSyncedCommit must not change during detection"))
+        assertTrue(yaml.contains("contents: read"))
+        assertFalse(yaml.contains("git merge"))
+        assertFalse(yaml.contains("git push"))
+        assertFalse(yaml.contains("gh release"))
+        assertFalse(yaml.contains("bump-version.sh"))
+        assertFalse(yaml.contains("testDebugUnitTest"))
     }
 
     // ---------------------------------------------------------------- our own changes

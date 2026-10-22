@@ -14,6 +14,7 @@ app/src/main/java/com/mvrk/vrka/share/ShareActivity.kt|class ShareActivity|Quick
 app/src/main/java/com/mvrk/vrka/share/QuickDownloadAnalyzer.kt|object QuickDownloadAnalyzer|probe-driven quality selection
 app/src/main/java/com/mvrk/vrka/share/ShareUrlParser.kt|object ShareUrlParser|share link parsing
 app/src/main/java/com/mvrk/vrka/update/UpdateVerification.kt|PINNED_CERT_SHA256|in-app update trust chain
+app/src/main/java/com/mvrk/vrka/update/UpdateVerification.kt|arm64-v8a|arm64-only update verification
 app/src/main/java/com/mvrk/vrka/update/AppUpdateManager.kt|hoodmoshla/SnapVRKA|update source repository
 app/src/main/java/com/mvrk/vrka/DownloadModels.kt|PAUSED|pause/resume notification support
 app/src/main/java/com/mvrk/vrka/Theme.kt|ThemeMode.AUTO|light/dark/auto theme system

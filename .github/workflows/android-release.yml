@@ -1,17 +1,18 @@
 name: Android Release
 
 on:
-  push:
+  pull_request:
     branches:
       - main
       - "feature/**"
       - "release/**"
-    tags:
-      - "v*"
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      confirm_release:
+        description: "Type RELEASE to publish the version declared in app/build.gradle.kts"
+        required: true
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -25,10 +26,8 @@ jobs:
   # ---------------------------------------------------------------- build
   build:
     name: Build, test and verify SnapVRKA
-    # Every release is published from the branch run, and that run creates the version tag.
-    # Creating that tag re-fires this workflow through the `tags: v*` trigger, so tag runs are
-    # skipped: without this the same version would be built and uploaded twice (= self-retrigger).
-    if: ${{ !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }}
+    # Pull requests verify only. A GitHub Release is never created by a push or by a tag.
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.confirm_release == 'RELEASE') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -149,22 +148,37 @@ jobs:
           echo "Artifact APK: $APK_PATH"
           echo "APK size    : $(stat -c%s "$APK_PATH") bytes"
 
-          cd artifacts
-          "$AAPT2" dump badging "$APK_NAME" > badging.txt
-          grep -E "^package:" badging.txt
+          "$AAPT2" dump badging "$APK_PATH" > artifacts/badging.txt
+          grep -E "^package:" artifacts/badging.txt
 
           # Must be the real SnapVRKA package, the expected version, and a non-debuggable build.
-          grep -q "^package: name='com.hoodmoshla.snapvrka' " badging.txt
-          grep -qE "versionName='${VERSION_NAME}'" badging.txt
-          if grep -q "^application-debuggable" badging.txt; then
+          grep -q "^package: name='com.hoodmoshla.snapvrka' " artifacts/badging.txt
+          grep -qE "versionName='${VERSION_NAME}'" artifacts/badging.txt
+          VERSION_CODE="$(grep -E '^[[:space:]]*versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | grep -oE '[0-9]+' | head -1)"
+          grep -qE "versionCode='${VERSION_CODE}'" artifacts/badging.txt
+          if grep -q "^application-debuggable" artifacts/badging.txt; then
             echo "::error::The release APK is debuggable; refusing to publish it."
             exit 1
           fi
 
-          "$APKSIGNER" verify --verbose --print-certs "$APK_NAME" | tee apksigner.txt
+          # Gradle abiFilters must have produced exactly one APK, containing only arm64-v8a.
+          APK_COUNT="$(find "$VARIANT_DIR" -maxdepth 1 -type f -name '*.apk' | wc -l)"
+          if [ "$APK_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one release APK, found $APK_COUNT."
+            find "$VARIANT_DIR" -maxdepth 1 -type f -name '*.apk' -print
+            exit 1
+          fi
+          NATIVE_ABIS="$(unzip -Z1 "$APK_PATH" | awk -F/ '/^lib\/[^/]+\/.+\.so$/ { print $2 }' | sort -u)"
+          if [ "$NATIVE_ABIS" != "arm64-v8a" ]; then
+            echo "::error::Native ABI mismatch: expected only arm64-v8a, found: ${NATIVE_ABIS:-<none>}"
+            exit 1
+          fi
+          echo "Native ABI verified: arm64-v8a only"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee artifacts/apksigner.txt
 
           # The APK must carry the one and only SnapVRKA release certificate.
-          CERT_SHA256="$(grep -i "certificate SHA-256 digest" apksigner.txt | head -1 | awk '{print $NF}' | tr 'A-F' 'a-f')"
+          CERT_SHA256="$(grep -i "certificate SHA-256 digest" artifacts/apksigner.txt | head -1 | awk '{print $NF}' | tr 'A-F' 'a-f')"
           EXPECTED_CERT_SHA256="90a91740960b8f47f5bf302d1f13dd804853b73a61613e2eb395fefe72e58f27"
           if [ "$CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
             echo "::error::Signing certificate mismatch: expected ${EXPECTED_CERT_SHA256} but the APK was signed with ${CERT_SHA256:-<none>}."
@@ -173,12 +187,13 @@ jobs:
           fi
           echo "Signing certificate SHA-256 verified: $CERT_SHA256"
 
-          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
-          cat "$APK_NAME.sha256"
+          SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+          printf '%s  %s\n' "$SHA256" "$APK_NAME" > "$APK_PATH.sha256"
+          cat "$APK_PATH.sha256"
 
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "apk_size=$(stat -c%s "$APK_NAME")" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$(stat -c%s "$APK_PATH")" >> "$GITHUB_OUTPUT"
           echo "cert_sha256=$CERT_SHA256" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
@@ -207,11 +222,10 @@ jobs:
   # ---------------------------------------------------------------- release
   release:
     name: Publish GitHub release
-    # Runs only after Build + Test + Verify succeeded, and never for pull requests.
-    # It also runs for branch pushes and manual runs: the tag is derived from the project's
-    # versionName, and an already existing tag/release is updated instead of failing.
+    # Only a manual run that explicitly typed RELEASE may publish, and only after verification.
+    # An existing tag or release is never replaced or reused.
     needs: build
-    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_release == 'RELEASE' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -260,6 +274,15 @@ jobs:
           echo "Version  : $VERSION_NAME ($VERSION_CODE)"
           echo "APK      : $APK ($(stat -c%s "$APK") bytes)"
           echo "Checksum : $SHA_FILE"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Refusing to reuse or replace it."
+            exit 1
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Refusing to replace it."
+            exit 1
+          fi
 
           {
             echo "tag=$TAG"
@@ -341,9 +364,7 @@ jobs:
           echo "--- RELEASE_NOTES.md ---"
           cat RELEASE_NOTES.md
 
-      # Idempotent: a pre-existing tag or release is updated (assets clobbered) instead of failing,
-      # so repeated pushes never break the workflow.
-      - name: Create or update the GitHub release
+      - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -354,21 +375,18 @@ jobs:
 
           ASSETS=("$APK_PATH" "$SHA_FILE")
 
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG already exists: refreshing assets and notes."
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            gh release edit "$TAG" --title "SnapVRKA $TAG" --notes-file RELEASE_NOTES.md --prerelease=false
-          else
-            echo "Creating release $TAG."
-            CREATE_ARGS=(--title "SnapVRKA $TAG" --notes-file RELEASE_NOTES.md)
-            # Only pin the commit when the tag does not exist yet.
-            if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
-              CREATE_ARGS+=(--target "$GITHUB_SHA")
-            fi
-            gh release create "$TAG" "${ASSETS[@]}" "${CREATE_ARGS[@]}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1 \
+            || gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag or release $TAG already exists. Refusing to replace it."
+            exit 1
           fi
 
-          gh release edit "$TAG" --latest
+          echo "Creating release $TAG."
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "SnapVRKA $TAG" \
+            --notes-file RELEASE_NOTES.md \
+            --latest
 
           # Final verification goes through the REST API: the JSON it returns is stable across gh
           # versions, unlike `gh release view --json isLatest`, which older gh builds reject with
