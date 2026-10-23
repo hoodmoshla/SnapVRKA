@@ -6,7 +6,12 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.mvrk.vrka.update.AppUpdateManager
+import com.mvrk.vrka.update.AppUpdateDownloadPolicy
+import com.mvrk.vrka.update.AppUpdateNotificationFactory
+import com.mvrk.vrka.update.AppUpdateHttpException
+import com.mvrk.vrka.update.PermanentAppUpdateException
 import com.mvrk.vrka.update.UpdateVerification
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -41,68 +46,48 @@ class AppUpdateDownloadWorker(
         val tempFile = File(updatesDir, "$apkFileName.download.tmp")
 
         try {
-            Log.i(TAG, "Starting persistent APK download from $downloadUrl to ${targetFile.absolutePath}...")
+            Log.i(TAG, "Starting persistent APK download from $downloadUrl to ${targetFile.absolutePath} (attempt ${runAttemptCount + 1})")
             var currentUrl = downloadUrl
             var redirects = 0
             val maxRedirects = 5
             var success = false
+            val resumeFrom = AppUpdateDownloadPolicy.resumeOffset(tempFile.length(), expectedSizeBytes)
+            if (resumeFrom == 0L && tempFile.exists()) tempFile.delete()
 
             while (redirects < maxRedirects && !success) {
                 val url = AppUpdateManager.validateHttpsUrl(currentUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.instanceFollowRedirects = false
                 conn.setRequestProperty("User-Agent", "SnapVRKA-AppUpdater")
+                AppUpdateDownloadPolicy.rangeHeader(resumeFrom)?.let { range ->
+                    conn.setRequestProperty("Range", range)
+                    conn.setRequestProperty("Accept-Encoding", "identity")
+                }
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 30_000
 
                 try {
                     when (val code = conn.responseCode) {
                         HttpURLConnection.HTTP_OK -> {
-                            val totalBytes = conn.contentLengthLong.takeIf { it > 0 } ?: expectedSizeBytes
-                            var downloadedBytes = 0L
-
-                            conn.inputStream.use { input ->
-                                FileOutputStream(tempFile).use { output ->
-                                    val buffer = ByteArray(8192)
-                                    var read: Int
-                                    var lastUpdate = 0L
-
-                                    while (input.read(buffer).also { read = it } != -1) {
-                                        if (isStopped) {
-                                            tempFile.delete()
-                                            prefs.edit().putString(KEY_STATE, STATE_CANCELLED).apply()
-                                            return@withContext Result.failure(workDataOf(KEY_ERROR to "Download cancelled"))
-                                        }
-                                        output.write(buffer, 0, read)
-                                        downloadedBytes += read
-
-                                        val now = System.currentTimeMillis()
-                                        if (now - lastUpdate > 250 || downloadedBytes == totalBytes) {
-                                            lastUpdate = now
-                                            val progress = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes.toFloat() else 0f
-                                            setProgress(
-                                                workDataOf(
-                                                    KEY_PROGRESS to progress,
-                                                    KEY_DOWNLOADED_BYTES to downloadedBytes,
-                                                    KEY_TOTAL_BYTES to totalBytes,
-                                                )
-                                            )
-                                        }
-                                    }
-                                    output.flush()
-                                }
-                            }
-
-                            if (!tempFile.exists() || tempFile.length() == 0L) {
-                                throw IOException("Downloaded file is empty")
-                            }
-
-                            if (targetFile.exists()) targetFile.delete()
-                            if (!tempFile.renameTo(targetFile)) {
-                                tempFile.copyTo(targetFile, overwrite = true)
+                            if (resumeFrom > 0L) {
+                                // The server ignored Range. Restart so the partial bytes are not duplicated.
                                 tempFile.delete()
+                                throw IOException("Server ignored the resume range; restarting the update download")
                             }
-
+                            writeBody(conn, tempFile, 0L, expectedSizeBytes, prefs)
+                            success = true
+                        }
+                        HttpURLConnection.HTTP_PARTIAL -> {
+                            if (resumeFrom <= 0L) {
+                                throw PermanentAppUpdateException("Unexpected partial response for a new update download")
+                            }
+                            val contentRange = conn.getHeaderField("Content-Range").orEmpty()
+                            if (!contentRange.startsWith("bytes $resumeFrom-")) {
+                                tempFile.delete()
+                                throw IOException("Server resumed from an unexpected byte range")
+                            }
+                            val totalBytes = conn.contentLengthLong.takeIf { it > 0 } ?: expectedSizeBytes
+                            writeBody(conn, tempFile, resumeFrom, totalBytes, prefs)
                             success = true
                         }
                         HttpURLConnection.HTTP_MOVED_PERM,
@@ -116,15 +101,24 @@ class AppUpdateDownloadWorker(
                             currentUrl = nextUrl
                             redirects++
                         }
-                        else -> throw IOException("HTTP error $code from $currentUrl")
+                        else -> {
+                            if (AppUpdateDownloadPolicy.isRetryableHttpStatus(code)) {
+                                throw AppUpdateHttpException(code, "Temporary HTTP error $code from $currentUrl")
+                            }
+                            throw PermanentAppUpdateException("HTTP error $code from $currentUrl")
+                        }
                     }
                 } finally {
                     conn.disconnect()
                 }
             }
 
-            if (!success || !targetFile.exists() || targetFile.length() == 0L) {
+            if (!success || !tempFile.exists() || tempFile.length() == 0L) {
                 throw IOException("APK download failed or exceeded redirects")
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
             }
 
             Log.i(TAG, "APK download completed: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
@@ -132,18 +126,18 @@ class AppUpdateDownloadWorker(
             // ---- Integrity gate: the bytes must match the published SHA-256 before anything else.
             if (expectedSha256 == null) {
                 targetFile.delete()
-                throw IOException("The release did not publish a SHA-256 checksum; refusing the update.")
+                throw PermanentAppUpdateException("The release did not publish a SHA-256 checksum; refusing the update.")
             }
             if (expectedSizeBytes > 0L && targetFile.length() != expectedSizeBytes) {
                 targetFile.delete()
-                throw IOException(
+                throw PermanentAppUpdateException(
                     "Size mismatch: expected $expectedSizeBytes bytes but downloaded ${targetFile.length()} bytes.",
                 )
             }
             val actualSha256 = UpdateVerification.sha256Hex(targetFile)
             if (!UpdateVerification.sha256Matches(expectedSha256, actualSha256)) {
                 targetFile.delete()
-                throw IOException("SHA-256 mismatch: the downloaded APK does not match the published checksum.")
+                throw PermanentAppUpdateException("SHA-256 mismatch: the downloaded APK does not match the published checksum.")
             }
             Log.i(TAG, "SHA-256 verified for ${targetFile.name}")
 
@@ -153,6 +147,7 @@ class AppUpdateDownloadWorker(
                 .putString(KEY_VERSION, targetVersion)
                 .putString(KEY_EXPECTED_SHA256, expectedSha256)
                 .apply()
+            AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
 
             Result.success(
                 workDataOf(
@@ -160,14 +155,63 @@ class AppUpdateDownloadWorker(
                     KEY_VERSION to targetVersion,
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "AppUpdateDownloadWorker failed: ${e.message}", e)
-            tempFile.delete()
-            prefs.edit()
-                .putString(KEY_STATE, STATE_FAILED)
-                .putString(KEY_ERROR, e.message ?: "Download failed")
-                .apply()
-            Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Download failed")))
+            if (AppUpdateDownloadPolicy.shouldRetry(runAttemptCount, e)) {
+                prefs.edit()
+                    .putString(KEY_STATE, STATE_DOWNLOADING)
+                    .putString(KEY_ERROR, e.message ?: "Temporary update download failure")
+                    .apply()
+                Result.retry()
+            } else {
+                tempFile.delete()
+                prefs.edit()
+                    .putString(KEY_STATE, STATE_FAILED)
+                    .putString(KEY_ERROR, e.message ?: "Download failed")
+                    .apply()
+                Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Download failed")))
+            }
+        }
+    }
+
+    private suspend fun writeBody(
+        conn: HttpURLConnection,
+        tempFile: File,
+        alreadyDownloaded: Long,
+        announcedTotal: Long,
+        prefs: android.content.SharedPreferences,
+    ) {
+        var downloadedBytes = alreadyDownloaded
+        conn.inputStream.use { input ->
+            FileOutputStream(tempFile, alreadyDownloaded > 0L).use { output ->
+                val buffer = ByteArray(8192)
+                var lastUpdate = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    if (isStopped) {
+                        prefs.edit().putString(KEY_STATE, STATE_CANCELLED).apply()
+                        throw CancellationException("Application update download cancelled")
+                    }
+                    output.write(buffer, 0, read)
+                    downloadedBytes += read
+                    val now = System.currentTimeMillis()
+                    if (now - lastUpdate > 250 || downloadedBytes == announcedTotal) {
+                        lastUpdate = now
+                        val progress = if (announcedTotal > 0) downloadedBytes.toFloat() / announcedTotal.toFloat() else 0f
+                        setProgress(
+                            workDataOf(
+                                KEY_PROGRESS to progress,
+                                KEY_DOWNLOADED_BYTES to downloadedBytes,
+                                KEY_TOTAL_BYTES to announcedTotal,
+                            )
+                        )
+                    }
+                }
+                output.flush()
+            }
         }
     }
 

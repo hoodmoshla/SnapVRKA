@@ -22,7 +22,7 @@ object QuickDownloadAnalyzer {
             media = media,
             videoOptions = videos,
             audioOptions = audios,
-            selectedVideo = videos.firstOrNull(),
+            selectedVideo = videos.maxByOrNull { it.height },
             // Audio-only sources (or sources with no usable video stream) start on the audio tab.
             selectedAudio = if (videos.isEmpty()) audios.firstOrNull() else null,
         )
@@ -37,7 +37,7 @@ object QuickDownloadAnalyzer {
 
     fun selectMode(state: QuickDownloadState, mode: MediaMode): QuickDownloadState = when (mode) {
         MediaMode.VIDEO -> state.copy(
-            selectedVideo = state.videoOptions.firstOrNull(),
+            selectedVideo = state.videoOptions.maxByOrNull { it.height },
             selectedAudio = null,
         )
         MediaMode.AUDIO -> state.copy(

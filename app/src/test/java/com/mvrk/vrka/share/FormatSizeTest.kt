@@ -13,9 +13,10 @@ class FormatSizeTest {
     }
 
     @Test
-    fun approximateSizeIsUsedWhenExactIsMissing() {
+    fun approximateSizeIsNeverPresentedAsTheKnownFileSize() {
         val format = MediaFormat(formatId = "137", filesizeApprox = 42L)
-        assertEquals(42L, QuickDownloadPlanner.knownSize(format))
+        assertNull(QuickDownloadPlanner.knownSize(format))
+        assertNull(QuickDownloadPlanner.exactSize(format))
     }
 
     @Test

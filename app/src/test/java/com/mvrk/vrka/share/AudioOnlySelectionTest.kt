@@ -43,15 +43,9 @@ class AudioOnlySelectionTest {
     }
 
     @Test
-    fun mp3SizesAreEstimatedFromBitrateAndDuration() {
+    fun mp3ConversionDoesNotClaimAnEstimatedFileSize() {
         val options = QuickDownloadPlanner.audioOptions(info(opusAudio))
-        // 320 kbps * 200 s / 8 => 8_000_000 bytes
-        assertEquals(8_000_000L, options.first { it.label == "MP3 320" }.sizeBytes)
-        // 192 kbps * 200 s / 8 => 4_800_000 bytes
-        assertEquals(4_800_000L, options.first { it.label == "MP3 192" }.sizeBytes)
-        // 128 kbps * 200 s / 8 => 3_200_000 bytes
-        assertEquals(3_200_000L, options.first { it.label == "MP3 128" }.sizeBytes)
-        assertTrue(options.take(3).all { it.sizeIsApproximate })
+        assertTrue(options.take(3).all { it.sizeBytes == null && !it.sizeIsApproximate })
     }
 
     @Test
@@ -72,9 +66,8 @@ class AudioOnlySelectionTest {
         val opus = options.first { it.label == "Opus" }
         assertNull(opus.sourceFormatId)
         assertTrue(!opus.isNativeCopy)
-        // 96 kbps * 200 s / 8 => 2_400_000 bytes
-        assertEquals(2_400_000L, opus.sizeBytes)
-        assertTrue(opus.sizeIsApproximate)
+        assertNull(opus.sizeBytes)
+        assertTrue(!opus.sizeIsApproximate)
         assertNull(opus.formatSelector)
     }
 

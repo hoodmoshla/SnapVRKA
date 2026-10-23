@@ -126,9 +126,21 @@ jobs:
               echo "لا توجد commits جديدة منذ آخر مزامنة ناجحة."
             fi
             echo
-            echo "## قرار الدمج"
+          echo "## قرار الدمج"
+          echo
+          echo "لا يوجد دمج تلقائي. إذا حذف إصدار أصلي Puemos أو ConcurrentTransferEngine، أو غيّر هوية التطبيق أو التوقيع أو مسار التحديث، يتوقف التشغيل ويبقى هذا التقرير للمراجعة البشرية."
+          echo
+          if [ "$HAS_UPDATE" = "true" ]; then
+            echo "## بوابات الحماية"
             echo
-            echo "إعادة هيكلة VRKA 5.0.2 غير معتمدة للدمج التلقائي: يحافظ SnapVRKA على Puemos وConcurrentTransferEngine ومحركه الحالي."
+            for gate in Puemos ConcurrentTransferEngine applicationId signingConfig; do
+              if git diff --name-only "${LAST_SYNCED}..${UPSTREAM_SHA}" | grep -q .; then
+                if git grep -q "$gate" "${LAST_SYNCED}" -- '*.kt' '*.kts' && ! git grep -q "$gate" "${UPSTREAM_SHA}" -- '*.kt' '*.kts'; then
+                  echo "- توقف: العلامة \`$gate\` اختفت من الأصل الجديد."
+                fi
+              fi
+            done
+          fi
           } > upstream-report/upstream-summary.md
 
           AFTER_STATE="$(sha256sum .snapvrka/upstream-sync.json | awk '{print $1}')"

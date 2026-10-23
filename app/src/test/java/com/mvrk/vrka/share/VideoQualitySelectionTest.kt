@@ -46,14 +46,14 @@ class VideoQualitySelectionTest {
             video("136", 720), video("135", 480), audioOnly,
         )
         val heights = QuickDownloadPlanner.videoOptions(media).map { it.height }
-        assertEquals(listOf(2160, 1440, 1080, 720, 480), heights)
+        assertEquals(listOf(480, 720, 1080, 1440, 2160), heights)
     }
 
     @Test
     fun missingResolutionsAreNeverInvented() {
         val media = info(video("137", 1080), video("136", 720), audioOnly)
         val heights = QuickDownloadPlanner.videoOptions(media).map { it.height }
-        assertEquals(listOf(1080, 720), heights)
+        assertEquals(listOf(720, 1080), heights)
         assertTrue(heights.none { it == 2160 || it == 1440 || it == 480 })
     }
 
@@ -128,15 +128,30 @@ class VideoQualitySelectionTest {
     }
 
     @Test
-    fun estimatedSizeIsSumOfVideoAndAudio() {
+    fun bitrateEstimateIsNotShownAsAFileSize() {
         val media = info(
             video("137", 1080, size = null),
             audioOnly,
         )
         val option = QuickDownloadPlanner.videoOptions(media).single()
-        // video tbr = 1080 kbps over 100s => 13_500_000 ; audio filesize 2_000_000
-        assertEquals(15_500_000L, option.sizeBytes)
-        assertTrue(option.sizeIsApproximate)
+        assertNull(option.sizeBytes)
+        assertTrue(!option.sizeIsApproximate)
+    }
+
+    @Test
+    fun available360And480AppearInAscendingOrderWithExactCombinedSize() {
+        val media = info(
+            video("398", 720, codec = "av01", size = 7_000_000L),
+            video("396", 360, codec = "av01", size = 3_000_000L),
+            video("397", 480, codec = "av01", size = 5_000_000L),
+            audioOnly,
+        )
+        val options = QuickDownloadPlanner.videoOptions(media)
+        assertEquals(listOf(360, 480, 720), options.map { it.height })
+        assertEquals(5_000_000L, options[0].sizeBytes)
+        assertEquals(7_000_000L, options[1].sizeBytes)
+        assertEquals(9_000_000L, options[2].sizeBytes)
+        assertTrue(options.none { it.sizeIsApproximate })
     }
 
     @Test

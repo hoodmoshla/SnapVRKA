@@ -26,7 +26,7 @@ object QuickDownloadPlanner {
         return videoFormats
             .groupBy { it.height!! }
             .map { (height, candidates) -> buildVideoOption(height, candidates, bestAudio, info.durationSeconds) }
-            .sortedByDescending { it.height }
+            .sortedBy { it.height }
     }
 
     private fun buildVideoOption(
@@ -39,10 +39,9 @@ object QuickDownloadPlanner {
         val needsSeparateAudio = !video.hasAudio
         val audio = if (needsSeparateAudio) bestAudio else null
 
-        val videoSize = knownSize(video) ?: estimatedSize(video.tbr, duration) ?: estimatedSize(video.vbr, duration)
-        val audioSize = audio?.let { knownSize(it) ?: estimatedSize(it.tbr, duration) ?: estimatedSize(it.abr, duration) }
+        val videoSize = exactSize(video)
+        val audioSize = audio?.let(::exactSize)
 
-        val sizeIsApproximate = video.filesize == null || (audio != null && audio.filesize == null)
         val totalSize = when {
             videoSize == null -> null
             needsSeparateAudio && audioSize == null -> null
@@ -58,7 +57,7 @@ object QuickDownloadPlanner {
             vcodec = video.vcodec,
             extension = video.extension.ifBlank { "mp4" },
             sizeBytes = totalSize,
-            sizeIsApproximate = sizeIsApproximate,
+            sizeIsApproximate = false,
         )
     }
 
@@ -120,8 +119,8 @@ object QuickDownloadPlanner {
                     label = "MP3 $bitrate",
                     bitrateKbps = bitrate,
                     sourceFormatId = null,
-                    sizeBytes = estimateBytes(bitrate, duration),
-                    sizeIsApproximate = true,
+                    sizeBytes = null,
+                    sizeIsApproximate = false,
                     isNativeCopy = false,
                 ),
             )
@@ -138,8 +137,8 @@ object QuickDownloadPlanner {
                 label = NATIVE_OPUS_LABEL,
                 bitrateKbps = opusBitrate,
                 sourceFormatId = nativeOpus?.formatId,
-                sizeBytes = nativeOpus?.let(::knownSize) ?: estimateBytes(opusBitrate, duration),
-                sizeIsApproximate = nativeOpus?.filesize == null,
+                sizeBytes = nativeOpus?.let(::exactSize),
+                sizeIsApproximate = false,
                 isNativeCopy = nativeOpus != null,
             ),
         )
@@ -182,7 +181,10 @@ object QuickDownloadPlanner {
 
     // ---------------------------------------------------------------- sizes
 
-    fun knownSize(format: MediaFormat): Long? = format.filesize ?: format.filesizeApprox
+    /** Published exact file size only. A bitrate estimate is never shown as a file size. */
+    fun exactSize(format: MediaFormat): Long? = format.filesize?.takeIf { it > 0L }
+
+    fun knownSize(format: MediaFormat): Long? = exactSize(format)
 
     fun estimatedSize(tbrKbps: Double?, durationSeconds: Double?): Long? {
         if (tbrKbps == null || tbrKbps <= 0.0 || durationSeconds == null || durationSeconds <= 0.0) return null

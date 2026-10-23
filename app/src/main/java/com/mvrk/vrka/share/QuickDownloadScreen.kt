@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -86,7 +87,7 @@ fun QuickDownloadSheet(
             border = BorderStroke(1.dp, VrkaTokens.BorderSubtle),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 640.dp),
+                .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.92f).dp),
         ) {
             Column(
                 modifier = Modifier

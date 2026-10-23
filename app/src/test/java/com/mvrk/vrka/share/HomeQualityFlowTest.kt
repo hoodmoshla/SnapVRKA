@@ -63,7 +63,7 @@ class HomeQualityFlowTest {
             "https://example.test/v",
         )
         assertEquals(ProbePhase.READY, state.phase)
-        assertEquals(listOf(1080, 720, 480), state.videoOptions.map { it.height })
+        assertEquals(listOf(480, 720, 1080), state.videoOptions.map { it.height })
         assertTrue(state.videoOptions.none { it.height == 2160 || it.height == 1440 })
     }
 

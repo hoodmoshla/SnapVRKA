@@ -330,6 +330,9 @@
     <string name="update_sha_missing">الإصدار لا ينشر بصمة SHA-256؛ تم رفض التحديث</string>
     <string name="update_verified_success">تم تنزيل التحديث بنجاح وتم التحقق منه</string>
     <string name="update_install_now">تثبيت الآن</string>
+    <string name="update_notification_channel">تحديثات SnapVRKA</string>
+    <string name="update_notification_channel_description">إشعار واحد عند اكتمال تنزيل تحديث موثّق</string>
+    <string name="update_ready_notification">إصدار SnapVRKA %1$s جاهز. افتح التطبيق ثم اضغط «تثبيت» لإكمال التثبيت النظامي.</string>
     <string name="settings_auto_update_check">التحقق من التحديثات تلقائيًا</string>
     <string name="settings_auto_update_check_subtitle">فحص التحديثات عند فتح التطبيق وعند العودة إليه</string>
     <string name="settings_update_available_short">يتوفر إصدار جديد v%1$s</string>

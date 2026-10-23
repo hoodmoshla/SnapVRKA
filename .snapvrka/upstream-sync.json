@@ -4,7 +4,7 @@
   "targetBranch": "feature/snapvrka-quick-share-arabic",
   "lastSyncedCommit": "869c8e14940a06ecc7473ad7a687067e4be8e8ee",
   "lastSyncedAt": "2026-09-30T18:11:00Z",
-  "snapvrkaVersionName": "1.0.0",
-  "snapvrkaVersionCode": 10000,
+  "snapvrkaVersionName": "1.0.2",
+  "snapvrkaVersionCode": 10002,
   "versioningScheme": "major*10000 + minor*100 + patch"
 }

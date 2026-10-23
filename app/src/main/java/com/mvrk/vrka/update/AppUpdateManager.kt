@@ -10,6 +10,10 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import java.util.concurrent.TimeUnit
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -227,6 +231,16 @@ class AppUpdateManager(
             )
             val workRequest = OneTimeWorkRequestBuilder<AppUpdateDownloadWorker>()
                 .setInputData(inputData)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL,
+                    AppUpdateDownloadPolicy.INITIAL_BACKOFF_MILLIS,
+                    TimeUnit.MILLISECONDS,
+                )
                 .build()
 
             workManager.enqueueUniqueWork(
