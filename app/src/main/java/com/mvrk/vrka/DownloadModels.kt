@@ -25,17 +25,20 @@ enum class JobState {
 
     val label: String
         get() = when (this) {
-            QUEUED -> SnapVrkaArabic.text("Queued")
-            PREPARING -> SnapVrkaArabic.text("Preparing")
-            WAITING_FOR_USER -> SnapVrkaArabic.text("Waiting for you")
-            BROWSER_FALLBACK -> SnapVrkaArabic.text("Browser fallback")
-            DOWNLOADING -> SnapVrkaArabic.text("Downloading")
-            PAUSED -> SnapVrkaArabic.text("Paused")
-            POSTPROCESSING -> SnapVrkaArabic.text("Finishing")
-            DONE -> SnapVrkaArabic.text("Complete")
-            FAILED -> SnapVrkaArabic.text("Failed")
-            CANCELLED -> SnapVrkaArabic.text("Cancelled")
+            QUEUED -> "Queued"
+            PREPARING -> "Preparing"
+            WAITING_FOR_USER -> "Waiting for you"
+            BROWSER_FALLBACK -> "Browser fallback"
+            DOWNLOADING -> "Downloading"
+            PAUSED -> "Paused"
+            POSTPROCESSING -> "Finishing"
+            DONE -> "Complete"
+            FAILED -> "Failed"
+            CANCELLED -> "Cancelled"
         }
+
+    val displayLabel: String
+        get() = SnapVrkaArabic.text(label)
 
     val labelRes: Int
         get() = when (this) {
@@ -53,8 +56,8 @@ enum class JobState {
 }
 
 enum class MediaMode(val label: String) {
-    VIDEO(SnapVrkaArabic.text("Video")),
-    AUDIO(SnapVrkaArabic.text("Audio")),
+    VIDEO("Video"),
+    AUDIO("Audio"),
 }
 
 enum class VideoQuality(val label: String, val height: Int?) {
@@ -68,25 +71,25 @@ enum class VideoQuality(val label: String, val height: Int?) {
 }
 
 enum class AudioFormat(val label: String, val codec: String) {
-    MP3(SnapVrkaArabic.text("MP3 (compressed)"), "mp3"),
-    OPUS(SnapVrkaArabic.text("Opus (prefer native)"), "opus"),
-    WAV(SnapVrkaArabic.text("WAV (uncompressed)"), "wav"),
+    MP3("MP3 (compressed)", "mp3"),
+    OPUS("Opus (prefer native)", "opus"),
+    WAV("WAV (uncompressed)", "wav"),
 }
 
 enum class SaveLocationMode(val label: String) {
-    REMEMBER_LOCATION(SnapVrkaArabic.text("Use selected")),
-    ASK_EVERY_TIME(SnapVrkaArabic.text("Ask every time")),
+    REMEMBER_LOCATION("Use selected"),
+    ASK_EVERY_TIME("Ask every time"),
 }
 
 enum class FontPreference(val label: String) {
-    VRKA_FONT(SnapVrkaArabic.text("VRKA Font")),
-    SYSTEM_FONT(SnapVrkaArabic.text("System Font")),
+    VRKA_FONT("VRKA Font"),
+    SYSTEM_FONT("System Font"),
 }
 
 enum class ThemeMode(val label: String) {
-    AUTO(SnapVrkaArabic.text("Auto")),
-    LIGHT(SnapVrkaArabic.text("Light")),
-    DARK(SnapVrkaArabic.text("Dark")),
+    AUTO("Auto"),
+    LIGHT("Light"),
+    DARK("Dark"),
     ;
 
     val labelRes: Int
@@ -113,8 +116,8 @@ fun resolveDarkMode(mode: ThemeMode, systemInDarkTheme: Boolean): Boolean = when
 }
 
 enum class UpdatePreference(val label: String) {
-    STABLE(SnapVrkaArabic.text("Stable")),
-    NIGHTLY(SnapVrkaArabic.text("Nightly")),
+    STABLE("Stable"),
+    NIGHTLY("Nightly"),
 }
 
 @Immutable

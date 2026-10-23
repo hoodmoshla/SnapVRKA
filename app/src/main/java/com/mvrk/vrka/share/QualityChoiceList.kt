@@ -1,6 +1,7 @@
 package com.mvrk.vrka.share
 
 import com.mvrk.vrka.Text
+import com.mvrk.vrka.SnapVrkaArabic
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -53,7 +54,7 @@ internal fun QualityChoiceList(
             videoOptions.forEach { option ->
                 QualityRow(
                     title = buildString {
-                        append(option.label)
+                        append(SnapVrkaArabic.text(option.label))
                         option.fps?.takeIf { it >= 50 }?.let { append(" · ${it.toInt()} FPS") }
                     },
                     subtitle = option.vcodec?.substringBefore('/'),

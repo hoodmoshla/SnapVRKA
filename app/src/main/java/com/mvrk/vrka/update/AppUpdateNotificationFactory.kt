@@ -24,8 +24,7 @@ internal object AppUpdateNotificationFactory {
     const val DOWNLOAD_NOTIFICATION_ID = 50_201
     const val READY_NOTIFICATION_ID = 50_202
 
-    fun readyMessage(version: String): String =
-        SnapVrkaArabic.text("SnapVRKA $version is ready to install.")
+    fun readyMessage(version: String): String = "VRKA Android $version is ready to install."
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

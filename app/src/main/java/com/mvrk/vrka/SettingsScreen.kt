@@ -564,7 +564,7 @@ internal fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.padding(top = 2.dp),
                         ) {
-                            VrkaStatusBadge(componentStatus.label, statusColor, isMonospace = true)
+                            VrkaStatusBadge(SnapVrkaArabic.text(componentStatus.label), statusColor, isMonospace = true)
                             when {
                                 comp.updateState == ComponentUpdateState.UPDATE_FAILED ||
                                     comp.checkState == ComponentCheckState.CHECK_FAILED -> {
@@ -649,7 +649,7 @@ internal fun SettingsScreen(
                                     updateManager.onChannelChanged(item)
                                 }
                             },
-                            label = item.label,
+                            label = SnapVrkaArabic.text(item.label),
                             isMonospace = true,
                         )
                     }

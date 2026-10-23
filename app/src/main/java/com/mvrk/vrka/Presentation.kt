@@ -1,18 +1,15 @@
 package com.mvrk.vrka
 
-internal fun requestSummary(request: DownloadRequest): String = SnapVrkaArabic.text(
-    when (request.mode) {
+internal fun requestSummary(request: DownloadRequest): String = when (request.mode) {
         MediaMode.VIDEO -> "Video • ${request.quality.label}"
         MediaMode.AUDIO -> when (request.audioFormat) {
             AudioFormat.MP3 -> "MP3 • ${request.mp3Bitrate} kbps"
             AudioFormat.OPUS -> "Opus • Best Native Opus"
             AudioFormat.WAV -> "WAV • Uncompressed PCM"
         }
-    },
-)
+    }
 
-internal fun jobMediaSummary(job: DownloadJob): String = SnapVrkaArabic.text(
-    when (job.request.mode) {
+internal fun jobMediaSummary(job: DownloadJob): String = when (job.request.mode) {
         MediaMode.VIDEO -> {
             val actual = job.actualResolution
             if (!actual.isNullOrBlank()) {
@@ -28,11 +25,9 @@ internal fun jobMediaSummary(job: DownloadJob): String = SnapVrkaArabic.text(
             AudioFormat.OPUS -> "Audio • Opus (Native)"
             AudioFormat.WAV -> "Audio • WAV (PCM)"
         }
-    },
-)
+    }
 
-internal fun jobStatusLabel(job: DownloadJob): String = SnapVrkaArabic.text(
-    when {
+internal fun jobStatusLabel(job: DownloadJob): String = when {
         job.state == JobState.PREPARING && job.detail.contains("runtime", true) -> "Analysing"
         job.state == JobState.POSTPROCESSING && job.detail.contains("Publishing", true) -> "Publishing"
         job.state == JobState.POSTPROCESSING &&
@@ -40,18 +35,15 @@ internal fun jobStatusLabel(job: DownloadJob): String = SnapVrkaArabic.text(
         job.state == JobState.POSTPROCESSING && job.request.mode == MediaMode.AUDIO -> "Converting"
         job.state == JobState.POSTPROCESSING -> "Merging"
         else -> job.state.label
-    },
-)
+    }
 
-internal fun jobProgressSummary(job: DownloadJob): String = SnapVrkaArabic.text(
-    buildList {
+internal fun jobProgressSummary(job: DownloadJob): String = buildList {
         if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
             add("${job.progress.toInt()}%")
         }
         job.speed.takeIf(String::isNotBlank)?.let(::add)
         job.etaSeconds?.let { add(formatEtaCompact(it)) }
-    }.joinToString(" • ").ifBlank { job.detail },
-)
+    }.joinToString(" • ").ifBlank { job.detail }
 
 internal fun friendlyFailureTitle(job: DownloadJob): String {
     val text = "${job.detail} ${job.error}".lowercase()
@@ -72,7 +64,7 @@ internal fun friendlyFailureTitle(job: DownloadJob): String {
         "browser fallback closed" in text -> "Browser session closed"
         else -> "Download failed"
     }
-    return SnapVrkaArabic.text(english)
+    return english
 }
 
 internal fun friendlyFailureDetail(job: DownloadJob): String {
@@ -95,7 +87,7 @@ internal fun friendlyFailureDetail(job: DownloadJob): String {
         "browser fallback closed" in text -> "No downloadable non-DRM media was handed off."
         else -> "Try again. Failure details saved to Diagnostics in Settings."
     }
-    return SnapVrkaArabic.text(english)
+    return english
 }
 
 internal fun formatEtaCompact(seconds: Long): String {
@@ -103,8 +95,8 @@ internal fun formatEtaCompact(seconds: Long): String {
     val minutes = (seconds % 3600) / 60
     val remainder = seconds % 60
     return if (hours > 0) {
-        SnapVrkaArabic.text("%d:%02d:%02d left".format(hours, minutes, remainder))
+        "%d:%02d:%02d left".format(hours, minutes, remainder)
     } else {
-        SnapVrkaArabic.text("%d:%02d left".format(minutes, remainder))
+        "%d:%02d left".format(minutes, remainder)
     }
 }
