@@ -1,0 +1,6 @@
+Noto Naskh Arabic
+Copyright 2015-2020 Google LLC.
+Licensed under the SIL Open Font License, Version 1.1.
+https://scripts.sil.org/OFL
+Source: https://github.com/notofonts/arabic
+Bundled so SnapVRKA can render Arabic interface text. Reserved font names are not used for a modified font.

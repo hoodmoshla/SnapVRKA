@@ -17,13 +17,15 @@ import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import com.mvrk.vrka.MainActivity
 import com.mvrk.vrka.R
+import com.mvrk.vrka.SnapVrkaArabic
 
 internal object AppUpdateNotificationFactory {
     const val CHANNEL_ID = "app_update_downloads"
     const val DOWNLOAD_NOTIFICATION_ID = 50_201
     const val READY_NOTIFICATION_ID = 50_202
 
-    fun readyMessage(version: String): String = "VRKA Android $version is ready to install."
+    fun readyMessage(version: String): String =
+        SnapVrkaArabic.text("SnapVRKA $version is ready to install.")
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

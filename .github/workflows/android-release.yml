@@ -127,6 +127,7 @@ jobs:
             exit 1
           fi
           APK_NAME="SnapVRKA-v${VERSION_NAME}.apk"
+          CANONICAL_APK_NAME="SnapVRKA-v${VERSION_NAME}-arm64-v8a-release.apk"
           APK_PATH="artifacts/$APK_NAME"
           VARIANT_DIR="app/build/outputs/apk/release"
 
@@ -144,6 +145,8 @@ jobs:
           mkdir -p artifacts
           rm -f artifacts/*.apk artifacts/*.apk.sha256
           cp "$SRC" "$APK_PATH"
+          cp "$APK_PATH" "artifacts/$CANONICAL_APK_NAME"
+          printf '%s  %s\n' "$(sha256sum "$APK_PATH" | awk '{print $1}')" "$CANONICAL_APK_NAME" > "artifacts/${CANONICAL_APK_NAME}.sha256"
           echo "Collected   : $SRC"
           echo "Artifact APK: $APK_PATH"
           echo "APK size    : $(stat -c%s "$APK_PATH") bytes"
@@ -258,15 +261,23 @@ jobs:
 
           TAG="v${VERSION_NAME}"
           APK="release-assets/SnapVRKA-v${VERSION_NAME}.apk"
+          CANONICAL_APK="release-assets/SnapVRKA-v${VERSION_NAME}-arm64-v8a-release.apk"
           if [ ! -f "$APK" ]; then
             echo "::error::Signed release APK SnapVRKA-v${VERSION_NAME}.apk is missing from the SnapVRKA-release-apk artifact."
             ls -la release-assets || true
             exit 1
           fi
+          if [ ! -f "$CANONICAL_APK" ]; then
+            cp "$APK" "$CANONICAL_APK"
+          fi
 
           SHA_FILE="${APK}.sha256"
+          CANONICAL_SHA_FILE="${CANONICAL_APK}.sha256"
           if [ ! -f "$SHA_FILE" ]; then
             sha256sum "$APK" > "$SHA_FILE"
+          fi
+          if [ ! -f "$CANONICAL_SHA_FILE" ]; then
+            sha256sum "$CANONICAL_APK" > "$CANONICAL_SHA_FILE"
           fi
 
           echo "Tag      : $TAG"
@@ -373,7 +384,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          ASSETS=("$APK_PATH" "$SHA_FILE")
+          CANONICAL_APK="${APK_PATH%.apk}-arm64-v8a-release.apk"
+          CANONICAL_SHA="${CANONICAL_APK}.sha256"
+          if [ ! -f "$CANONICAL_APK" ]; then
+            cp "$APK_PATH" "$CANONICAL_APK"
+          fi
+          if [ ! -f "$CANONICAL_SHA" ]; then
+            sha256sum "$CANONICAL_APK" > "$CANONICAL_SHA"
+          fi
+          ASSETS=("$APK_PATH" "$SHA_FILE" "$CANONICAL_APK" "$CANONICAL_SHA")
 
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1 \
             || gh release view "$TAG" > /dev/null 2>&1; then

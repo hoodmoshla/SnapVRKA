@@ -14,6 +14,7 @@ class SnapVrkaUpdateTest {
     @Test
     fun apkNamePatternAcceptsSnapVrkaNaming() {
         assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.0.2.1-arm64-v8a-release.apk"))
+        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.0.2.2-arm64-v8a-release.apk"))
         assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.0.3.1-arm64-v8a-release.apk"))
         assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.1.0.1-arm64-v8a-release.apk"))
         assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.0.2.1-arm64-v8a-release.apk"))

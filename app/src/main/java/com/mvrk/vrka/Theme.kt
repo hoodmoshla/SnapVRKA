@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
 import androidx.core.view.WindowCompat
 
 val VRKA_PURPLE = Color(0xFF6F30D5)
@@ -174,6 +175,13 @@ val SpaceMono = FontFamily(
     Font(R.font.space_mono_bold, FontWeight.Bold),
 )
 
+val ArabicUi = FontFamily(
+    Font(R.font.noto_naskh_arabic_regular, FontWeight.Normal),
+    Font(R.font.noto_naskh_arabic_medium, FontWeight.Medium),
+    Font(R.font.noto_naskh_arabic_bold, FontWeight.SemiBold),
+    Font(R.font.noto_naskh_arabic_bold, FontWeight.Bold),
+)
+
 val LocalVrkaFontFamily = staticCompositionLocalOf { SpaceMono }
 
 val VrkaMonoFamily: FontFamily
@@ -189,21 +197,21 @@ val VrkaSansFamily: FontFamily
 private val defaultTypography = Typography()
 
 fun vrkaTypography(fontFamily: FontFamily): Typography = Typography(
-    displayLarge = defaultTypography.displayLarge.copy(fontFamily = fontFamily),
-    displayMedium = defaultTypography.displayMedium.copy(fontFamily = fontFamily),
-    displaySmall = defaultTypography.displaySmall.copy(fontFamily = fontFamily),
-    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = fontFamily),
-    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = fontFamily),
-    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = fontFamily),
-    titleLarge = defaultTypography.titleLarge.copy(fontFamily = fontFamily),
-    titleMedium = defaultTypography.titleMedium.copy(fontFamily = fontFamily),
-    titleSmall = defaultTypography.titleSmall.copy(fontFamily = fontFamily),
-    bodyLarge = defaultTypography.bodyLarge.copy(fontFamily = fontFamily),
-    bodyMedium = defaultTypography.bodyMedium.copy(fontFamily = fontFamily),
-    bodySmall = defaultTypography.bodySmall.copy(fontFamily = fontFamily),
-    labelLarge = defaultTypography.labelLarge.copy(fontFamily = fontFamily),
-    labelMedium = defaultTypography.labelMedium.copy(fontFamily = fontFamily),
-    labelSmall = defaultTypography.labelSmall.copy(fontFamily = fontFamily),
+    displayLarge = defaultTypography.displayLarge.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    displayMedium = defaultTypography.displayMedium.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    displaySmall = defaultTypography.displaySmall.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    titleLarge = defaultTypography.titleLarge.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    titleMedium = defaultTypography.titleMedium.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    titleSmall = defaultTypography.titleSmall.copy(fontFamily = fontFamily, lineHeight = 1.45.em),
+    bodyLarge = defaultTypography.bodyLarge.copy(fontFamily = fontFamily, lineHeight = 1.5.em),
+    bodyMedium = defaultTypography.bodyMedium.copy(fontFamily = fontFamily, lineHeight = 1.5.em),
+    bodySmall = defaultTypography.bodySmall.copy(fontFamily = fontFamily, lineHeight = 1.5.em),
+    labelLarge = defaultTypography.labelLarge.copy(fontFamily = fontFamily, lineHeight = 1.4.em),
+    labelMedium = defaultTypography.labelMedium.copy(fontFamily = fontFamily, lineHeight = 1.4.em),
+    labelSmall = defaultTypography.labelSmall.copy(fontFamily = fontFamily, lineHeight = 1.4.em),
 )
 
 val VrkaTypography = vrkaTypography(SpaceMono)
@@ -228,8 +236,8 @@ fun VrkaTheme(
         else -> StandardDarkColors
     }
     val selectedFont = when (fontPreference) {
-        FontPreference.VRKA_FONT -> SpaceMono
-        FontPreference.SYSTEM_FONT -> FontFamily.Default
+        FontPreference.VRKA_FONT -> ArabicUi
+        FontPreference.SYSTEM_FONT -> ArabicUi
     }
     val typography = vrkaTypography(selectedFont)
 

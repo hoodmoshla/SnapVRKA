@@ -90,19 +90,19 @@ class DownloadService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = job?.title?.ifBlank { "VRKA download" } ?: "VRKA"
-        val status = job?.let(::jobStatusLabel) ?: "Preparing"
+        val title = job?.title?.ifBlank { SnapVrkaArabic.text("VRKA download") } ?: SnapVrkaArabic.text("VRKA")
+        val status = job?.let(::jobStatusLabel) ?: SnapVrkaArabic.text("Preparing")
         val summary = job?.let {
             val progress = jobProgressSummary(it)
             if (progress == it.detail) "$status • ${requestSummary(it.request)}"
             else "$status • $progress"
-        } ?: "Preparing download"
+        } ?: SnapVrkaArabic.text("Preparing download")
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(this, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
-            .setSubText("VRKA • $status")
+            .setSubText("${SnapVrkaArabic.text("VRKA")} • $status")
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
             .setContentIntent(openIntent)
             .setOnlyAlertOnce(true)

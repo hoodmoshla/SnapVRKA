@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvrk.vrka.AppSettings
 import com.mvrk.vrka.DownloadRequest
 import com.mvrk.vrka.DownloadService
+import com.mvrk.vrka.SnapVrkaLocale
 import com.mvrk.vrka.VrkaTheme
 import com.mvrk.vrka.vrkaApplication
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,9 @@ import kotlinx.coroutines.launch
  * It deliberately never starts the Home screen and never brings SnapVRKA's main task forward.
  */
 class ShareActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SnapVrkaLocale.wrap(newBase))
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val manager by lazy { vrkaApplication.downloads }
@@ -57,6 +61,8 @@ class ShareActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SnapVrkaLocale.applyTo(this)
+        window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
         enableEdgeToEdge()
         currentUrl = ShareUrlParser.fromIntent(intent)
         requestNotificationPermissionIfNeeded()

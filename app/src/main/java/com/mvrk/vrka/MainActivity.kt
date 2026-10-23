@@ -8,11 +8,17 @@ import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(SnapVrkaLocale.wrap(newBase))
+    }
+
     private val openQueueRequests = MutableStateFlow(0L)
     private val sharedUrls = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SnapVrkaLocale.applyTo(this)
+        window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
         handleIntent(intent)
         enableEdgeToEdge()
         setContent {
@@ -68,4 +74,3 @@ object UrlExtractor {
         return match.trimEnd('.', ',', ';', '!', '?', ')', ']', '"', '\'')
     }
 }
-

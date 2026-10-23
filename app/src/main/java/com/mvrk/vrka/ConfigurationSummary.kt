@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -33,11 +32,11 @@ internal fun ConfigurationSummary(
 ) {
     val primary = when (mode) {
         MediaMode.VIDEO ->
-            "Video · ${quality.label} · 60 FPS ${if (prefer60Fps) "on" else "off"}"
+            SnapVrkaArabic.text("Video · ${quality.label} · 60 FPS ${if (prefer60Fps) "on" else "off"}")
         MediaMode.AUDIO -> when (audioFormat) {
-            AudioFormat.MP3 -> "MP3 · $bitrate kbps"
-            AudioFormat.OPUS -> "Opus · Best Native Opus"
-            AudioFormat.WAV -> "WAV · Uncompressed PCM"
+            AudioFormat.MP3 -> SnapVrkaArabic.text("MP3 · $bitrate kbps")
+            AudioFormat.OPUS -> SnapVrkaArabic.text("Opus · Best Native Opus")
+            AudioFormat.WAV -> SnapVrkaArabic.text("WAV · Uncompressed PCM")
         }
     }
     val extras = buildList {
@@ -45,10 +44,10 @@ internal fun ConfigurationSummary(
             val range = listOf(playlistStart, playlistEnd)
                 .filter(String::isNotBlank)
                 .joinToString("–")
-            add(if (range.isBlank()) "Playlist" else "Playlist $range")
+            add(SnapVrkaArabic.text(if (range.isBlank()) "Playlist" else "Playlist $range"))
         }
-        if (subtitles) add("Subtitles")
-        if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add("Trim enabled")
+        if (subtitles) add(SnapVrkaArabic.text("Subtitles"))
+        if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add(SnapVrkaArabic.text("Trim enabled"))
         if (sponsorBlock) add("SponsorBlock")
     }
     Column(
