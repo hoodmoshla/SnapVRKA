@@ -13,16 +13,16 @@ class SnapVrkaUpdateTest {
 
     @Test
     fun apkNamePatternAcceptsSnapVrkaNaming() {
-        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.0.0.apk"))
-        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.0.1.apk"))
-        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.1.0.apk"))
-        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("snapvrka-v1.0.2.apk"))
+        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.0.2.1-arm64-v8a-release.apk"))
+        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.0.3.1-arm64-v8a-release.apk"))
+        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v5.1.0.1-arm64-v8a-release.apk"))
+        assertTrue(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.0.2.1-arm64-v8a-release.apk"))
     }
 
     @Test
     fun apkNamePatternRejectsLegacyVrkaAndroidNaming() {
-        assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("VRKA-Android-v1.0.1.apk"))
-        assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("VRKA-Android-v4.5.2.apk"))
+        assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("VRKA-Android-v5.0.2-arm64-v8a-release.apk"))
+        assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("VRKA-Android-v4.5.2-arm64-v8a-release.apk"))
         assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-arm64-v8a.apk"))
         assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("SnapVRKA-v1.0.1.zip"))
         assertFalse(AppUpdateManager.APK_NAME_PATTERN.matches("other-app.apk"))
@@ -30,33 +30,33 @@ class SnapVrkaUpdateTest {
 
     @Test
     fun releaseJsonWithSnapVrkaAssetIsAccepted() {
-        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1.apk"))
+        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1-arm64-v8a-release.apk"))
         assertNotNull(release)
         assertEquals("v1.0.1", release!!.tagName)
-        assertEquals("SnapVRKA-v1.0.1.apk", release.apkFileName)
+        assertEquals("SnapVRKA-v1.0.1-arm64-v8a-release.apk", release.apkFileName)
         assertEquals(SemanticVersion(1, 0, 1), release.version)
     }
 
     @Test
     fun releaseJsonWithOnlyLegacyAssetIsRejected() {
-        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "VRKA-Android-v1.0.1.apk"))
+        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "VRKA-Android-v1.0.1-arm64-v8a-release.apk"))
         assertNull(release)
     }
 
     @Test
     fun releaseJsonWithADifferentSnapVrkaVersionAssetIsRejected() {
-        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.0.apk"))
+        val release = AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.0-arm64-v8a-release.apk"))
         assertNull(release)
     }
 
     @Test
     fun releaseJsonFromTheUpstreamRepositoryIsRejected() {
-        val json = releaseJson("v5.0.2", "SnapVRKA-v5.0.2.apk")
+        val json = releaseJson("v5.0.2", "SnapVRKA-v5.0.2-arm64-v8a-release.apk")
             .replace(
-                "https://github.com/hoodmoshla/SnapVRKA/releases/download/v5.0.2/SnapVRKA-v5.0.2.apk",
-                "https://objects.githubusercontent.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/VRKA-Android-v5.0.2.apk",
+                "https://github.com/hoodmoshla/SnapVRKA/releases/download/v5.0.2/SnapVRKA-v5.0.2-arm64-v8a-release.apk",
+                "https://objects.githubusercontent.com/MaverickRox/VRKA-Android/releases/download/v5.0.2/SnapVRKA-v5.0.2-arm64-v8a-release.apk",
             )
-            .replace("SnapVRKA-v5.0.2.apk", "VRKA-Android-v5.0.2.apk")
+            .replace("SnapVRKA-v5.0.2-arm64-v8a-release.apk", "SnapVRKA-v5.0.2-arm64-v8a-release.apk")
         assertNull(AppUpdateManager.parseReleaseJson(json))
     }
 
@@ -70,8 +70,8 @@ class SnapVrkaUpdateTest {
               "prerelease": false,
               "assets": [
                 {
-                  "name": "SnapVRKA-v1.0.1.apk",
-                  "browser_download_url": "http://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1.apk",
+                  "name": "SnapVRKA-v1.0.1-arm64-v8a-release.apk",
+                  "browser_download_url": "http://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1-arm64-v8a-release.apk",
                   "size": 1234
                 }
               ]
@@ -90,8 +90,8 @@ class SnapVrkaUpdateTest {
               "prerelease": false,
               "assets": [
                 {
-                  "name": "SnapVRKA-v1.0.1.apk",
-                  "browser_download_url": "https://evil.example.com/SnapVRKA-v1.0.1.apk",
+                  "name": "SnapVRKA-v1.0.1-arm64-v8a-release.apk",
+                  "browser_download_url": "https://evil.example.com/SnapVRKA-v1.0.1-arm64-v8a-release.apk",
                   "size": 1234
                 }
               ]
@@ -102,8 +102,8 @@ class SnapVrkaUpdateTest {
 
     @Test
     fun draftAndPrereleaseReleasesAreIgnored() {
-        assertNull(AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1.apk", draft = true)))
-        assertNull(AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1.apk", prerelease = true)))
+        assertNull(AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1-arm64-v8a-release.apk", draft = true)))
+        assertNull(AppUpdateManager.parseReleaseJson(releaseJson("v1.0.1", "SnapVRKA-v1.0.1-arm64-v8a-release.apk", prerelease = true)))
     }
 
     private fun releaseJson(

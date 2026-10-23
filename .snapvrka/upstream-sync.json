@@ -1,10 +1,11 @@
 {
   "upstreamRepository": "MaverickRox/VRKA-Android",
   "upstreamBranch": "main",
-  "targetBranch": "feature/snapvrka-quick-share-arabic",
-  "lastSyncedCommit": "869c8e14940a06ecc7473ad7a687067e4be8e8ee",
-  "lastSyncedAt": "2026-09-30T18:11:00Z",
-  "snapvrkaVersionName": "1.0.2",
-  "snapvrkaVersionCode": 10002,
-  "versioningScheme": "major*10000 + minor*100 + patch"
+  "targetBranch": "release/5.0.2.1",
+  "lastSyncedCommit": "97652b787d7eb208ebe40827462ce8c79323ff92",
+  "lastSyncedTag": "v5.0.2",
+  "lastSyncedAt": "2026-10-23T13:03:00Z",
+  "snapvrkaVersionName": "5.0.2.1",
+  "snapvrkaVersionCode": 50021,
+  "versioningScheme": "upstreamVersion + .1 revision; versionCode major*10000 + minor*100 + patch*10 + revision"
 }

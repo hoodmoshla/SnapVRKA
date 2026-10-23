@@ -12,7 +12,7 @@ internal class JobStore(private val target: File) {
 
     fun load(): List<DownloadJob> {
         if (!target.isFile) return emptyList()
-        return runCatching {
+        val loaded = runCatching {
             val array = JSONArray(target.readText(Charsets.UTF_8))
             buildList {
                 for (index in 0 until array.length()) {
@@ -20,26 +20,42 @@ internal class JobStore(private val target: File) {
                 }
             }
         }.getOrDefault(emptyList())
+        // Rewrite legacy records after sensitive custom headers have been stripped.
+        save(loaded)
+        return loaded
     }
 
+    @Synchronized
     fun save(jobs: List<DownloadJob>) {
-        val array = JSONArray()
-        jobs.take(250).forEach { array.put(encode(it)) }
-        val temporary = File(target.parentFile, target.name + ".tmp")
-        temporary.writeText(array.toString(), Charsets.UTF_8)
         runCatching {
-            Files.move(
-                temporary.toPath(),
-                target.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE,
-            )
-        }.getOrElse {
-            Files.move(
-                temporary.toPath(),
-                target.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-            )
+            val array = JSONArray()
+            jobs.take(250).forEach { array.put(encode(it)) }
+            val parent = target.parentFile ?: return@runCatching
+            parent.mkdirs()
+            val temporary = File.createTempFile("jobs_", ".tmp", parent)
+            try {
+                temporary.writeText(array.toString(), Charsets.UTF_8)
+                runCatching {
+                    Files.move(
+                        temporary.toPath(),
+                        target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE,
+                    )
+                }.getOrElse {
+                    runCatching {
+                        Files.move(
+                            temporary.toPath(),
+                            target.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING,
+                        )
+                    }
+                }
+            } finally {
+                if (temporary.exists()) {
+                    temporary.delete()
+                }
+            }
         }
     }
 
@@ -58,6 +74,8 @@ internal class JobStore(private val target: File) {
             .put("outputs", JSONArray(job.outputUris))
             .put("error", job.error)
             .put("attempt", job.attempt)
+            .put("actualResolution", job.actualResolution)
+            .put("subtitleStatus", job.subtitleStatus.name)
             .put(
                 "request",
                 JSONObject()
@@ -81,11 +99,19 @@ internal class JobStore(private val target: File) {
                     .put("trimStart", request.trimStart)
                     .put("trimEnd", request.trimEnd)
                     .put("customArguments", JSONArray(request.customArguments))
+                    .put("formatSelector", request.formatSelector)
+                    .put("commandTemplateId", request.commandTemplateId)
+                    .put("commandTemplateName", request.commandTemplateName)
+                    .put("commandTemplateArguments", JSONArray(request.commandTemplateArguments))
+                    .put("h264CompatibilityMode", request.h264CompatibilityMode)
                     .put("referer", request.referer)
                     .put("origin", request.origin)
-                    .put("customHeaders", JSONObject(request.customHeaders))
-                    .put("destinationTreeUri", request.destinationTreeUri)
-                    .put("formatSelector", request.formatSelector),
+                    .put(
+                        "customHeaders",
+                        JSONObject(request.customHeaders.filterKeys { !HeaderValidation.isSensitiveHeader(it) }),
+                    )
+                    // Browser handoff URLs and headers stay in memory; they may contain credentials.
+                    .put("destinationTreeUri", request.destinationTreeUri),
             )
     }
 
@@ -110,7 +136,9 @@ internal class JobStore(private val target: File) {
         val customHeadersMap = if (customHeadersObj != null) {
             buildMap {
                 for (key in customHeadersObj.keys()) {
-                    put(key, customHeadersObj.optString(key))
+                    if (!HeaderValidation.isSensitiveHeader(key)) {
+                        put(key, customHeadersObj.optString(key))
+                    }
                 }
             }
         } else {
@@ -148,11 +176,19 @@ internal class JobStore(private val target: File) {
                 customArguments = encodedRequest.optJSONArray("customArguments")
                     ?.strings()
                     .orEmpty(),
+                formatSelector = encodedRequest.optString("formatSelector").takeIf { it.isNotBlank() && it != "null" },
+                commandTemplateId = encodedRequest.optString("commandTemplateId")
+                    .takeIf { it.isNotBlank() && it != "null" },
+                commandTemplateName = encodedRequest.optString("commandTemplateName"),
+                commandTemplateArguments = encodedRequest.optJSONArray("commandTemplateArguments")
+                    ?.strings()
+                    .orEmpty(),
+                h264CompatibilityMode = encodedRequest.optBoolean("h264CompatibilityMode", false),
                 referer = encodedRequest.optString("referer"),
                 origin = encodedRequest.optString("origin"),
                 customHeaders = customHeadersMap,
+                resolvedHeadersOrigin = "",
                 destinationTreeUri = if (encodedRequest.isNull("destinationTreeUri")) null else encodedRequest.optString("destinationTreeUri").takeIf { it.isNotBlank() },
-                formatSelector = encodedRequest.optString("formatSelector").takeIf { it.isNotBlank() },
             ),
             state = restoredState,
             title = value.optString("title"),
@@ -169,6 +205,8 @@ internal class JobStore(private val target: File) {
             outputUris = value.optJSONArray("outputs")?.strings().orEmpty(),
             error = restoredError,
             attempt = value.optInt("attempt", 1),
+            actualResolution = value.optString("actualResolution").takeIf { it.isNotBlank() && it != "null" },
+            subtitleStatus = enumValue(value.optString("subtitleStatus"), com.mvrk.vrka.subtitle.SubtitleStatus.NONE),
         )
     }.getOrNull()
 

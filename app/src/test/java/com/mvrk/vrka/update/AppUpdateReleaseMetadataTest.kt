@@ -44,18 +44,18 @@ class AppUpdateReleaseMetadataTest {
         val release = AppUpdateManager.parseReleaseJson(
             releaseJson(
                 assets = listOf(
-                    asset("SnapVRKA-v1.0.1.apk", size = 166_000_000L),
-                    asset("SnapVRKA-v1.0.1.apk.sha256", size = 86L),
+                    asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk", size = 166_000_000L),
+                    asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk.sha256", size = 86L),
                 ).joinToString(","),
             ),
         )
         assertNotNull(release)
         assertEquals("v1.0.1", release!!.tagName)
         assertEquals(SemanticVersion(1, 0, 1), release.version)
-        assertEquals("SnapVRKA-v1.0.1.apk", release.apkFileName)
+        assertEquals("SnapVRKA-v1.0.1-arm64-v8a-release.apk", release.apkFileName)
         assertEquals(166_000_000L, release.apkSizeBytes)
         assertNotNull("the .sha256 asset must be picked up", release.apkSha256Url)
-        assertTrue(release.apkSha256Url!!.endsWith("SnapVRKA-v1.0.1.apk.sha256"))
+        assertTrue(release.apkSha256Url!!.endsWith("SnapVRKA-v1.0.1-arm64-v8a-release.apk.sha256"))
         assertTrue(release.isVerifiable)
         assertTrue(release.htmlUrl.endsWith("/v1.0.1"))
     }
@@ -63,7 +63,7 @@ class AppUpdateReleaseMetadataTest {
     @Test
     fun aReleaseWithoutAChecksumIsStillParsedButNotVerifiable() {
         val release = AppUpdateManager.parseReleaseJson(
-            releaseJson(assets = asset("SnapVRKA-v1.0.1.apk")),
+            releaseJson(assets = asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk")),
         )
         assertNotNull(release)
         assertNull(release!!.apkSha256Url)
@@ -75,8 +75,8 @@ class AppUpdateReleaseMetadataTest {
         val release = AppUpdateManager.parseReleaseJson(
             releaseJson(
                 assets = listOf(
-                    asset("SnapVRKA-v1.0.1.apk"),
-                    asset("SnapVRKA-v1.0.1.apk.sha256"),
+                    asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk"),
+                    asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk.sha256"),
                     asset("SnapVRKA-v1.0.1-from-10000.delta", size = 250L),
                 ).joinToString(","),
             ),
@@ -92,9 +92,9 @@ class AppUpdateReleaseMetadataTest {
             AppUpdateManager.parseReleaseJson(
                 releaseJson(
                     assets = listOf(
-                        asset("VRKA-Android-v1.0.1.apk"),
-                        asset("SnapVRKA-arm64-v8a.apk"),
-                        asset("SnapVRKA-v1.0.1.zip"),
+                        asset("VRKA-Android-v1.0.1-arm64-v8a-release.apk"),
+                        asset("VRKA-Android-arm64-v8a.apk"),
+                        asset("VRKA-Android-v1.0.1.zip"),
                     ).joinToString(","),
                 ),
             ),
@@ -103,8 +103,8 @@ class AppUpdateReleaseMetadataTest {
 
     @Test
     fun draftAndPrereleaseReleasesAreNeverOffered() {
-        assertNull(AppUpdateManager.parseReleaseJson(releaseJson(assets = asset("SnapVRKA-v1.0.1.apk"), draft = true)))
-        assertNull(AppUpdateManager.parseReleaseJson(releaseJson(assets = asset("SnapVRKA-v1.0.1.apk"), prerelease = true)))
+        assertNull(AppUpdateManager.parseReleaseJson(releaseJson(assets = asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk"), draft = true)))
+        assertNull(AppUpdateManager.parseReleaseJson(releaseJson(assets = asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk"), prerelease = true)))
     }
 
     @Test
@@ -112,14 +112,14 @@ class AppUpdateReleaseMetadataTest {
         val release = AppUpdateManager.parseReleaseJson(
             releaseJson(
                 assets = listOf(
-                    asset("SnapVRKA-v1.0.1.apk", size = 10L),
-                    asset("SnapVRKA-v1.0.0.apk.sha256", tag = "v1.0.0", size = 86L),
+                    asset("SnapVRKA-v1.0.1-arm64-v8a-release.apk", size = 10L),
+                    asset("SnapVRKA-v1.0.0-arm64-v8a-release.apk.sha256", tag = "v1.0.0", size = 86L),
                 ).joinToString(","),
             ),
         )
         assertNotNull(release)
         // Only the checksum that belongs to the selected APK may be used.
-        assertFalse(release!!.apkSha256Url?.endsWith("SnapVRKA-v1.0.0.apk.sha256") == true)
+        assertFalse(release!!.apkSha256Url?.endsWith("SnapVRKA-v1.0.0-arm64-v8a-release.apk.sha256") == true)
     }
 
     @Test

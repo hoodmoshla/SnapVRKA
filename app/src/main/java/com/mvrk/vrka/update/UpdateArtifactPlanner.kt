@@ -51,21 +51,8 @@ object UpdateArtifactPlanner {
             fallbackApkSha256 = release.apkSha256,
         )
 
-        if (!DELTA_PATCHER_AVAILABLE) return full
-
-        val expectedDeltaName = deltaAssetName(release.version.toString(), fromVersionCode)
-        val delta = release.deltaAssets.firstOrNull {
-            it.fileName.equals(expectedDeltaName, ignoreCase = true) &&
-                it.sha256 != null &&
-                it.sizeBytes > 0L
-        } ?: return full
-
-        return full.copy(
-            kind = UpdateArtifactKind.DELTA_PATCH,
-            url = delta.downloadUrl,
-            fileName = delta.fileName,
-            sizeBytes = delta.sizeBytes,
-            sha256 = delta.sha256,
-        )
+        // The current release metadata verifies one canonical APK only. Delta metadata is intentionally
+        // not part of that contract, so every plan resolves to the signed full APK.
+        return full
     }
 }

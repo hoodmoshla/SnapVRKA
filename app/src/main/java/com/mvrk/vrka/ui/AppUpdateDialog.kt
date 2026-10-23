@@ -38,12 +38,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.mvrk.vrka.R
 import com.mvrk.vrka.VrkaMonoFamily
 import com.mvrk.vrka.VrkaTokens
 import com.mvrk.vrka.update.AppReleaseInfo
@@ -93,7 +91,7 @@ fun AppUpdateDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.update_available_title),
+                            text = "Update Available",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.Bold,
@@ -103,7 +101,7 @@ fun AppUpdateDialog(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = stringResource(R.string.settings_check_available, release.version.toString()),
+                            text = "Version v${release.version} is now available",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = VrkaMonoFamily,
                             ),
@@ -131,9 +129,10 @@ fun AppUpdateDialog(
 
                 if (release.apkSizeBytes > 0 || release.publishedAt.isNotBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    val sizePart = if (release.apkSizeBytes > 0) formatFileSize(release.apkSizeBytes) else null
-                    val datePart = if (release.publishedAt.isNotBlank()) formatPublishedDate(release.publishedAt) else null
-                    val metaParts = listOfNotNull(sizePart, datePart)
+                    val metaParts = buildList {
+                        if (release.apkSizeBytes > 0) add(formatFileSize(release.apkSizeBytes))
+                        if (release.publishedAt.isNotBlank()) add(formatPublishedDate(release.publishedAt))
+                    }
                     Text(
                         text = metaParts.joinToString(" • "),
                         style = MaterialTheme.typography.labelSmall.copy(
@@ -148,7 +147,7 @@ fun AppUpdateDialog(
 
                 // Changelog scrollable container
                 Text(
-                    text = stringResource(R.string.update_whats_new),
+                    text = "Release Notes",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = VrkaMonoFamily,
                         fontWeight = FontWeight.SemiBold,
@@ -178,7 +177,7 @@ fun AppUpdateDialog(
                     ) {
                         if (parsedNotes.isBlank()) {
                             Text(
-                                text = stringResource(R.string.update_whats_new),
+                                text = "No release notes provided for this version.",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = VrkaMonoFamily,
                                     fontStyle = FontStyle.Italic,
@@ -208,7 +207,7 @@ fun AppUpdateDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = stringResource(R.string.update_downloading),
+                                    text = "Downloading update...",
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                                     color = VrkaTokens.TextSecondary,
                                 )
@@ -245,27 +244,6 @@ fun AppUpdateDialog(
                             }
                         }
                     }
-                    is AppUpdateDownloadState.Verifying -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 18.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            CircularProgressIndicator(
-                                color = VrkaTokens.Accent,
-                                strokeWidth = 3.dp,
-                                modifier = Modifier.size(28.dp),
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = stringResource(R.string.update_verifying_apk),
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
-                                color = VrkaTokens.TextSecondary,
-                            )
-                        }
-                    }
-
                     is AppUpdateDownloadState.Installing -> {
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(
@@ -278,7 +256,7 @@ fun AppUpdateDialog(
                                 color = VrkaTokens.Accent,
                             )
                             Text(
-                                text = stringResource(R.string.update_verifying_apk),
+                                text = "Preparing package installer...",
                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                                 color = VrkaTokens.TextSecondary,
                             )
@@ -309,7 +287,7 @@ fun AppUpdateDialog(
                             shape = RoundedCornerShape(10.dp),
                         ) {
                             Text(
-                                text = stringResource(R.string.update_later),
+                                text = "Later",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontFamily = VrkaMonoFamily,
                                     fontWeight = FontWeight.SemiBold,
@@ -332,7 +310,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.update_downloading),
+                                    text = "Downloading...",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -350,7 +328,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.update_install),
+                                    text = "Install",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -368,7 +346,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.action_retry),
+                                    text = "Retry",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -386,7 +364,7 @@ fun AppUpdateDialog(
                                 ),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.update_download),
+                                    text = "Download Update",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = VrkaMonoFamily,
                                         fontWeight = FontWeight.Bold,
@@ -523,16 +501,15 @@ private fun AnnotatedString.Builder.appendInlineFormattedText(text: String) {
     }
 }
 
-@Composable
 private fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return ""
     val kb = bytes / 1024.0
     val mb = kb / 1024.0
     val gb = mb / 1024.0
     return when {
-        gb >= 1.0 -> String.format(Locale.US, "%.1f", gb) + " " + stringResource(R.string.unit_gb)
-        mb >= 1.0 -> String.format(Locale.US, "%.1f", mb) + " " + stringResource(R.string.unit_mb)
-        else -> String.format(Locale.US, "%.0f", kb) + " " + stringResource(R.string.unit_kb)
+        gb >= 1.0 -> String.format(Locale.US, "%.1f GB", gb)
+        mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
+        else -> String.format(Locale.US, "%.0f KB", kb)
     }
 }
 
@@ -571,7 +548,7 @@ fun ComponentStartupUpdateDialog(
             ) {
                 // Header
                 Text(
-                    text = stringResource(R.string.update_component_title),
+                    text = "Component Updates",
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = VrkaMonoFamily,
                         fontWeight = FontWeight.Bold,
@@ -581,7 +558,7 @@ fun ComponentStartupUpdateDialog(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.update_component_body),
+                    text = "New updates are available for your background components:",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = VrkaMonoFamily,
                     ),
@@ -620,7 +597,7 @@ fun ComponentStartupUpdateDialog(
                                     )
                                     val currentClean = com.mvrk.vrka.ComponentUpdateManager.cleanVersionString(item.currentVersion)
                                     Text(
-                                        text = stringResource(R.string.settings_installed, "v$currentClean"),
+                                        text = "Installed: v$currentClean",
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontFamily = VrkaMonoFamily,
                                         ),
@@ -651,7 +628,7 @@ fun ComponentStartupUpdateDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Action buttons: stringResource(R.string.update_later) and "Update Now"
+                // Action buttons: "Later" and "Update Now"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -668,7 +645,7 @@ fun ComponentStartupUpdateDialog(
                         ),
                     ) {
                         Text(
-                            text = stringResource(R.string.update_later),
+                            text = "Later",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.SemiBold,
@@ -688,7 +665,7 @@ fun ComponentStartupUpdateDialog(
                         ),
                     ) {
                         Text(
-                            text = stringResource(R.string.update_component_now),
+                            text = "Update Now",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = VrkaMonoFamily,
                                 fontWeight = FontWeight.Bold,

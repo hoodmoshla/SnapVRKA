@@ -1,6 +1,5 @@
 package com.mvrk.vrka
 
-import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 
 enum class JobState {
@@ -9,9 +8,8 @@ enum class JobState {
     WAITING_FOR_USER,
     BROWSER_FALLBACK,
     DOWNLOADING,
-    POSTPROCESSING,
-    /** The same task is suspended and can be resumed from where it stopped. */
     PAUSED,
+    POSTPROCESSING,
     DONE,
     FAILED,
     CANCELLED;
@@ -19,19 +17,26 @@ enum class JobState {
     val isTerminal: Boolean
         get() = this == DONE || this == FAILED || this == CANCELLED
 
-    /**
-     * A paused job is still "owned" by the foreground service: keeping it here is what keeps the
-     * notification (with its Resume action) alive while the transfer is suspended.
-     */
-    val isForegroundWork: Boolean
-        get() = this == QUEUED || this == PREPARING || this == DOWNLOADING ||
-            this == POSTPROCESSING || this == BROWSER_FALLBACK || this == PAUSED
-
-    /** True while the task is running or suspended (i.e. not finished yet). */
     val isActive: Boolean
         get() = !isTerminal
 
-    @get:StringRes
+    val isForegroundWork: Boolean
+        get() = this == QUEUED || this == PREPARING || this == DOWNLOADING || this == PAUSED || this == POSTPROCESSING || this == BROWSER_FALLBACK
+
+    val label: String
+        get() = when (this) {
+            QUEUED -> "Queued"
+            PREPARING -> "Preparing"
+            WAITING_FOR_USER -> "Waiting for you"
+            BROWSER_FALLBACK -> "Browser fallback"
+            DOWNLOADING -> "Downloading"
+            PAUSED -> "Paused"
+            POSTPROCESSING -> "Finishing"
+            DONE -> "Complete"
+            FAILED -> "Failed"
+            CANCELLED -> "Cancelled"
+        }
+
     val labelRes: Int
         get() = when (this) {
             QUEUED -> R.string.state_queued
@@ -39,70 +44,77 @@ enum class JobState {
             WAITING_FOR_USER -> R.string.state_waiting_for_user
             BROWSER_FALLBACK -> R.string.state_browser_fallback
             DOWNLOADING -> R.string.state_downloading
-            POSTPROCESSING -> R.string.state_postprocessing
             PAUSED -> R.string.state_paused
+            POSTPROCESSING -> R.string.state_postprocessing
             DONE -> R.string.state_done
             FAILED -> R.string.state_failed
             CANCELLED -> R.string.state_cancelled
         }
 }
 
-enum class MediaMode(@get:StringRes val labelRes: Int) {
-    VIDEO(R.string.mode_video),
-    AUDIO(R.string.mode_audio),
+enum class MediaMode(val label: String) {
+    VIDEO("Video"),
+    AUDIO("Audio"),
 }
 
-enum class VideoQuality(@get:StringRes val labelRes: Int, val height: Int?) {
-    BEST(R.string.quality_best_available, null),
-    P2160(R.string.quality_2160, 2160),
-    P1440(R.string.quality_1440, 1440),
-    P1080(R.string.quality_1080, 1080),
-    P720(R.string.quality_720, 720),
-    P480(R.string.quality_480, 480),
-    P360(R.string.quality_360, 360),
+enum class VideoQuality(val label: String, val height: Int?) {
+    BEST("Best available", null),
+    P2160("2160p", 2160),
+    P1440("1440p", 1440),
+    P1080("1080p", 1080),
+    P720("720p", 720),
+    P480("480p", 480),
+    P360("360p", 360),
 }
 
-enum class AudioFormat(@get:StringRes val labelRes: Int, val codec: String) {
-    MP3(R.string.audio_format_mp3, "mp3"),
-    OPUS(R.string.audio_format_opus, "opus"),
-    WAV(R.string.audio_format_wav, "wav"),
+enum class AudioFormat(val label: String, val codec: String) {
+    MP3("MP3 (compressed)", "mp3"),
+    OPUS("Opus (prefer native)", "opus"),
+    WAV("WAV (uncompressed)", "wav"),
 }
 
-enum class SaveLocationMode(@get:StringRes val labelRes: Int) {
-    REMEMBER_LOCATION(R.string.settings_save_use_selected),
-    ASK_EVERY_TIME(R.string.settings_save_ask),
+enum class SaveLocationMode(val label: String) {
+    REMEMBER_LOCATION("Use selected"),
+    ASK_EVERY_TIME("Ask every time"),
 }
 
-enum class FontPreference(@get:StringRes val labelRes: Int) {
-    VRKA_FONT(R.string.settings_font_vrka),
-    SYSTEM_FONT(R.string.settings_font_system),
+enum class FontPreference(val label: String) {
+    VRKA_FONT("VRKA Font"),
+    SYSTEM_FONT("System Font"),
 }
 
-enum class ThemeMode(@get:StringRes val labelRes: Int) {
-    /** Follow the device light/dark setting (default). */
-    AUTO(R.string.settings_theme_auto),
-    LIGHT(R.string.settings_theme_light),
-    DARK(R.string.settings_theme_dark);
+enum class ThemeMode(val label: String) {
+    AUTO("Auto"),
+    LIGHT("Light"),
+    DARK("Dark"),
+    ;
+
+    val labelRes: Int
+        get() = when (this) {
+            AUTO -> R.string.theme_auto
+            LIGHT -> R.string.theme_light
+            DARK -> R.string.theme_dark
+        }
 
     companion object {
-        /**
-         * Parses the persisted value. Unknown or legacy values fall back to [AUTO] so an
-         * upgraded install adopts the system theme instead of a hard-coded dark theme.
-         */
-        fun fromStorage(value: String?): ThemeMode = when (value) {
-            LIGHT.name -> LIGHT
-            DARK.name -> DARK
-            AUTO.name -> AUTO
-            // Legacy VRKA values.
-            "AMOLED" -> DARK
+        fun fromStorage(value: String?): ThemeMode = when (value?.trim()?.uppercase()) {
+            "LIGHT" -> LIGHT
+            "DARK", "AMOLED" -> DARK
+            "AUTO", null, "" -> AUTO
             else -> AUTO
         }
     }
 }
 
-enum class UpdatePreference(@get:StringRes val labelRes: Int) {
-    STABLE(R.string.settings_channel_stable),
-    NIGHTLY(R.string.settings_channel_nightly),
+fun resolveDarkMode(mode: ThemeMode, systemInDarkTheme: Boolean): Boolean = when (mode) {
+    ThemeMode.AUTO -> systemInDarkTheme
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+enum class UpdatePreference(val label: String) {
+    STABLE("Stable"),
+    NIGHTLY("Nightly"),
 }
 
 @Immutable
@@ -127,17 +139,18 @@ data class DownloadRequest(
     val trimStart: String = "",
     val trimEnd: String = "",
     val customArguments: List<String> = emptyList(),
+    val formatSelector: String? = null,
+    val commandTemplateId: String? = null,
+    val commandTemplateName: String = "",
+    val commandTemplateArguments: List<String> = emptyList(),
+    val h264CompatibilityMode: Boolean = false,
     val referer: String = "",
     val origin: String = "",
     val customHeaders: Map<String, String> = emptyMap(),
     val destinationTreeUri: String? = null,
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
-    /**
-     * Optional explicit yt-dlp format selector produced by the Quick Download probe.
-     * When null the existing quality/format heuristics are used unchanged.
-     */
-    val formatSelector: String? = null,
+    val resolvedHeadersOrigin: String = "",
 )
 
 @Immutable
@@ -155,7 +168,23 @@ data class DownloadJob(
     val outputUris: List<String> = emptyList(),
     val error: String = "",
     val attempt: Int = 1,
+    val actualResolution: String? = null,
+    val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
 )
+
+enum class StreamSelectionState {
+    IDLE,
+    RESOLVING,
+    RESOLVED,
+    AWAITING_CONFIRMATION,
+    QUEUED,
+    STARTING,
+    DOWNLOADING,
+    MERGING,
+    COMPLETED,
+    FAILED,
+    CANCELLED;
+}
 
 @Immutable
 data class RuntimeStatus(

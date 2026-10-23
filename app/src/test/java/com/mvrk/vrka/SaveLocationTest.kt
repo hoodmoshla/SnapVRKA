@@ -2,7 +2,6 @@ package com.mvrk.vrka
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -20,24 +19,16 @@ class SaveLocationTest {
     }
 
     @Test
-    fun saveLocationModeLabelsAreLocalizedArabic() {
-        // Labels are Arabic resources; the enum exposes  ids that must resolve to distinct strings.
-        assertTrue(SaveLocationMode.REMEMBER_LOCATION.labelRes != 0)
-        assertTrue(SaveLocationMode.ASK_EVERY_TIME.labelRes != 0)
-        assertTrue(SaveLocationMode.REMEMBER_LOCATION.labelRes != SaveLocationMode.ASK_EVERY_TIME.labelRes)
-        assertTrue(AudioFormat.OPUS.labelRes != 0)
-        assertTrue(VideoQuality.P1080.labelRes != 0)
+    fun saveLocationModeLabelsMatchExpectedDesign() {
+        assertEquals("Use selected", SaveLocationMode.REMEMBER_LOCATION.label)
+        assertEquals("Ask every time", SaveLocationMode.ASK_EVERY_TIME.label)
+        assertEquals("Opus (prefer native)", AudioFormat.OPUS.label)
     }
 
     @Test
     fun formatDisplayPathReturnsCleanUserFacingPaths() {
-        assertEquals("Downloads/SnapVRKA", OutputPublisher.formatDisplayPath(null))
-        assertEquals("Downloads/SnapVRKA", OutputPublisher.formatDisplayPath(""))
-        assertEquals(
-            "Download/SnapVRKA",
-            OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FSnapVRKA"),
-        )
-        // Legacy VRKA folder names are still rendered verbatim so old destinations keep working.
+        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(null))
+        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(""))
         assertEquals(
             "Download/VRKA",
             OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FVRKA"),

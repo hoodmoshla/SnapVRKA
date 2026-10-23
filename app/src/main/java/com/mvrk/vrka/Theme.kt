@@ -2,13 +2,15 @@ package com.mvrk.vrka
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -206,18 +208,6 @@ fun vrkaTypography(fontFamily: FontFamily): Typography = Typography(
 
 val VrkaTypography = vrkaTypography(SpaceMono)
 
-/**
- * Resolves the effective dark-mode state.
- *
- * [ThemeMode.AUTO] follows the device setting; [ThemeMode.LIGHT] and [ThemeMode.DARK] pin the
- * theme regardless of the system. Pure function so it can be unit tested.
- */
-fun resolveDarkMode(themeMode: ThemeMode, systemInDarkTheme: Boolean): Boolean = when (themeMode) {
-    ThemeMode.AUTO -> systemInDarkTheme
-    ThemeMode.LIGHT -> false
-    ThemeMode.DARK -> true
-}
-
 @Composable
 fun VrkaTheme(
     themeMode: ThemeMode = ThemeMode.AUTO,
@@ -261,6 +251,7 @@ fun VrkaTheme(
     CompositionLocalProvider(
         LocalVrkaColors provides vrkaColors,
         LocalVrkaFontFamily provides selectedFont,
+        LocalLayoutDirection provides LayoutDirection.Rtl,
     ) {
         MaterialTheme(
             colorScheme = colors,

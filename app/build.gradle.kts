@@ -23,11 +23,17 @@ val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTI
 val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
     Properties().apply { load(input) }
 }
+val geckoViewVersion = "156.0.20260921121718"
+// Release builds are minified by default. `-Psnapvrka.minifyRelease=false` produces a
+// signed, non-debuggable release APK without R8 shrinking (useful on constrained builders).
+val minifyRelease = providers.gradleProperty("snapvrka.minifyRelease")
+    .map { it.toBoolean() }
+    .getOrElse(true)
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"
     compileSdk {
-        version = release(36) {
+        version = release(37) {
             minorApiLevel = 1
         }
     }
@@ -42,8 +48,9 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 10002
-        versionName = "1.0.2"
+        versionCode = 50021
+        versionName = "5.0.2.1"
+        buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -106,12 +113,6 @@ extensions.configure<ApplicationExtension> {
         }
     }
 
-    // Release builds are minified by default. `-Psnapvrka.minifyRelease=false` produces a
-    // signed, non-debuggable release APK without R8 shrinking (useful on constrained builders).
-    val minifyRelease = providers.gradleProperty("snapvrka.minifyRelease")
-        .map { it.toBoolean() }
-        .getOrElse(true)
-
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -125,6 +126,11 @@ extensions.configure<ApplicationExtension> {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+        create("devRelease") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
@@ -171,14 +177,25 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("xpp3:xpp3:1.1.4c")
+    testImplementation("xmlpull:xmlpull:1.1.3.1")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
-    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:153.0.20260810162159")
+    implementation("org.mozilla.geckoview:geckoview-arm64-v8a:$geckoViewVersion")
     implementation("org.bouncycastle:bcpg-jdk18on:1.85")
     implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    val media3Version = "1.11.1"
+    implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    implementation("androidx.media3:media3-datasource:$media3Version")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

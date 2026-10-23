@@ -5,12 +5,12 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.mvrk.vrka.update.AppUpdateManager
 import com.mvrk.vrka.update.AppUpdateDownloadPolicy
+import com.mvrk.vrka.update.AppUpdateManager
 import com.mvrk.vrka.update.AppUpdateNotificationFactory
+import com.mvrk.vrka.update.AppUpdateDownloadPolicy.PayloadValidation
 import com.mvrk.vrka.update.AppUpdateHttpException
 import com.mvrk.vrka.update.PermanentAppUpdateException
-import com.mvrk.vrka.update.UpdateVerification
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,6 +18,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 class AppUpdateDownloadWorker(
     appContext: Context,
@@ -26,198 +29,283 @@ class AppUpdateDownloadWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val downloadUrl = inputData.getString(KEY_DOWNLOAD_URL)
-            ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "Missing download URL"))
+            ?: return@withContext failure("Missing download URL")
         val apkFileName = inputData.getString(KEY_APK_NAME)
-            ?: return@withContext Result.failure(workDataOf(KEY_ERROR to "Missing APK file name"))
-        val targetVersion = inputData.getString(KEY_TARGET_VERSION) ?: ""
+            ?: return@withContext failure("Missing APK file name")
+        val targetVersion = inputData.getString(KEY_TARGET_VERSION).orEmpty()
         val expectedSizeBytes = inputData.getLong(KEY_EXPECTED_SIZE, 0L)
-        val expectedSha256 = UpdateVerification.normalizeHex(inputData.getString(KEY_EXPECTED_SHA256))
+        val expectedSha256 = AppUpdateDownloadPolicy.normalizeGitHubSha256(
+            inputData.getString(KEY_EXPECTED_SHA256),
+        ) ?: return@withContext failure("Missing or invalid APK checksum")
+
+        if (!AppUpdateManager.isValidDownloadTarget(targetVersion, apkFileName)) {
+            return@withContext failure("Invalid update version or non-canonical APK filename")
+        }
+        if (expectedSizeBytes <= 0L) return@withContext failure("Invalid APK size metadata")
 
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString(KEY_STATE, STATE_DOWNLOADING)
-            .putString(KEY_VERSION, targetVersion)
-            .apply()
-
-        val updatesDir = File(applicationContext.cacheDir, "updates")
-        if (!updatesDir.exists()) updatesDir.mkdirs()
-
-        val targetFile = File(updatesDir, apkFileName)
-        val tempFile = File(updatesDir, "$apkFileName.download.tmp")
+        val updatesDirectory = File(applicationContext.filesDir, "updates").canonicalFile
+        val targetFile = File(updatesDirectory, apkFileName).canonicalFile
+        val tempFile = File(updatesDirectory, "$apkFileName.download.tmp")
+        val fallbackStageFile = File(updatesDirectory, "$apkFileName.stage.tmp")
 
         try {
-            Log.i(TAG, "Starting persistent APK download from $downloadUrl to ${targetFile.absolutePath} (attempt ${runAttemptCount + 1})")
-            var currentUrl = downloadUrl
-            var redirects = 0
-            val maxRedirects = 5
-            var success = false
-            val resumeFrom = AppUpdateDownloadPolicy.resumeOffset(tempFile.length(), expectedSizeBytes)
-            if (resumeFrom == 0L && tempFile.exists()) tempFile.delete()
+            if (targetFile.parentFile != updatesDirectory) {
+                throw PermanentAppUpdateException("APK target escaped the private update directory")
+            }
+            if (!updatesDirectory.exists() && !updatesDirectory.mkdirs()) {
+                throw IOException("Unable to create the private update directory")
+            }
 
-            while (redirects < maxRedirects && !success) {
+            AppUpdateManager.validateHttpsUrl(downloadUrl)
+            runCatching {
+                setForeground(AppUpdateNotificationFactory.foregroundInfo(applicationContext, targetVersion, 0))
+            }.onFailure { e ->
+                Log.w(TAG, "Unable to run update worker in foreground: ${e.message}")
+            }
+
+            // A completed, verified file survives worker/process recreation and is reused without downloading again.
+            val existingError = AppUpdateManager.verifyDownloadedApk(
+                context = applicationContext,
+                file = targetFile,
+                targetVersion = targetVersion,
+                expectedSizeBytes = expectedSizeBytes,
+                expectedSha256 = expectedSha256,
+            )
+            if (targetFile.exists() && existingError == null) {
+                markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256)
+                AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
+                return@withContext success(targetFile, targetVersion)
+            }
+
+            prefs.edit()
+                .putString(KEY_STATE, STATE_DOWNLOADING)
+                .putString(KEY_VERSION, targetVersion)
+                .putString(KEY_DOWNLOAD_URL, downloadUrl)
+                .putString(KEY_APK_NAME, apkFileName)
+                .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
+                .putString(KEY_EXPECTED_SHA256, expectedSha256)
+                .commit()
+
+            var currentUrl = downloadUrl
+            var redirectsFollowed = 0
+            var downloadedAndVerified = false
+            var lastProgressAt = 0L
+            var lastNotifiedPercent = -1
+
+            while (!downloadedAndVerified) {
                 val url = AppUpdateManager.validateHttpsUrl(currentUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.instanceFollowRedirects = false
-                conn.setRequestProperty("User-Agent", "SnapVRKA-AppUpdater")
-                AppUpdateDownloadPolicy.rangeHeader(resumeFrom)?.let { range ->
-                    conn.setRequestProperty("Range", range)
-                    conn.setRequestProperty("Accept-Encoding", "identity")
-                }
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 30_000
+                val connection = url.openConnection() as? HttpURLConnection
+                    ?: throw PermanentAppUpdateException("Unsupported APK download connection")
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("User-Agent", "SnapVRKA-AppUpdater")
+                connection.setRequestProperty("Accept-Encoding", "identity")
+                connection.connectTimeout = CONNECT_TIMEOUT_MS
+                connection.readTimeout = READ_TIMEOUT_MS
 
                 try {
-                    when (val code = conn.responseCode) {
+                    when (val responseCode = connection.responseCode) {
                         HttpURLConnection.HTTP_OK -> {
-                            if (resumeFrom > 0L) {
-                                // The server ignored Range. Restart so the partial bytes are not duplicated.
-                                tempFile.delete()
-                                throw IOException("Server ignored the resume range; restarting the update download")
+                            connection.inputStream.use { input ->
+                                FileOutputStream(tempFile, false).use { output ->
+                                    val buffer = ByteArray(BUFFER_SIZE)
+                                    var downloadedBytes = 0L
+                                    while (true) {
+                                        if (isStopped) throw CancellationException("Application update work stopped")
+                                        val count = input.read(buffer)
+                                        if (count < 0) break
+                                        output.write(buffer, 0, count)
+                                        downloadedBytes += count
+
+                                        val percent = ((downloadedBytes * 100L) / expectedSizeBytes)
+                                            .toInt()
+                                            .coerceIn(0, 100)
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastProgressAt >= PROGRESS_UPDATE_INTERVAL_MS || percent == 100) {
+                                            lastProgressAt = now
+                                            lastNotifiedPercent = percent
+                                            setProgress(
+                                                workDataOf(
+                                                    KEY_PROGRESS to (percent / 100f),
+                                                    KEY_DOWNLOADED_BYTES to downloadedBytes,
+                                                    KEY_TOTAL_BYTES to expectedSizeBytes,
+                                                ),
+                                            )
+                                            runCatching {
+                                                setForeground(
+                                                    AppUpdateNotificationFactory.foregroundInfo(
+                                                        applicationContext,
+                                                        targetVersion,
+                                                        percent,
+                                                    ),
+                                                )
+                                            }
+                                        } else if (percent >= lastNotifiedPercent + 5) {
+                                            lastNotifiedPercent = percent
+                                            runCatching {
+                                                setForeground(
+                                                    AppUpdateNotificationFactory.foregroundInfo(
+                                                        applicationContext,
+                                                        targetVersion,
+                                                        percent,
+                                                    ),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    output.fd.sync()
+                                }
                             }
-                            writeBody(conn, tempFile, 0L, expectedSizeBytes, prefs)
-                            success = true
+
+                            if (!tempFile.isFile || tempFile.length() <= 0L) {
+                                throw IOException("APK download was empty or incomplete")
+                            }
+                            val payloadValidation = AppUpdateDownloadPolicy.validatePayload(
+                                actualSize = tempFile.length(),
+                                expectedSize = expectedSizeBytes,
+                                actualSha256 = AppUpdateDownloadPolicy.sha256(tempFile),
+                                expectedSha256 = expectedSha256,
+                            )
+                            when (payloadValidation) {
+                                PayloadValidation.VERIFIED -> Unit
+                                PayloadValidation.INCOMPLETE -> throw IOException("APK download ended before all bytes arrived")
+                                PayloadValidation.INVALID -> throw PermanentAppUpdateException(
+                                    "APK checksum or size verification failed",
+                                )
+                            }
+
+                            val archiveError = AppUpdateManager.verifyDownloadedApk(
+                                context = applicationContext,
+                                file = tempFile,
+                                targetVersion = targetVersion,
+                                expectedSizeBytes = expectedSizeBytes,
+                                expectedSha256 = expectedSha256,
+                            )
+                            if (archiveError != null) throw PermanentAppUpdateException(archiveError)
+                            downloadedAndVerified = true
                         }
-                        HttpURLConnection.HTTP_PARTIAL -> {
-                            if (resumeFrom <= 0L) {
-                                throw PermanentAppUpdateException("Unexpected partial response for a new update download")
-                            }
-                            val contentRange = conn.getHeaderField("Content-Range").orEmpty()
-                            if (!contentRange.startsWith("bytes $resumeFrom-")) {
-                                tempFile.delete()
-                                throw IOException("Server resumed from an unexpected byte range")
-                            }
-                            val totalBytes = conn.contentLengthLong.takeIf { it > 0 } ?: expectedSizeBytes
-                            writeBody(conn, tempFile, resumeFrom, totalBytes, prefs)
-                            success = true
-                        }
+
                         HttpURLConnection.HTTP_MOVED_PERM,
                         HttpURLConnection.HTTP_MOVED_TEMP,
                         HttpURLConnection.HTTP_SEE_OTHER,
-                        307, 308 -> {
-                            val location = conn.getHeaderField("Location")
-                                ?: throw IOException("HTTP redirect $code without Location header")
-                            val nextUrl = AppUpdateManager.resolveRedirectUrl(url, location)
-                            AppUpdateManager.validateHttpsUrl(nextUrl)
-                            currentUrl = nextUrl
-                            redirects++
-                        }
-                        else -> {
-                            if (AppUpdateDownloadPolicy.isRetryableHttpStatus(code)) {
-                                throw AppUpdateHttpException(code, "Temporary HTTP error $code from $currentUrl")
+                        307,
+                        308,
+                        -> {
+                            val location = connection.getHeaderField("Location")
+                                ?: throw PermanentAppUpdateException("APK redirect omitted its target")
+                            if (!AppUpdateManager.canFollowRedirect(redirectsFollowed)) {
+                                throw PermanentAppUpdateException("APK download exceeded the redirect limit")
                             }
-                            throw PermanentAppUpdateException("HTTP error $code from $currentUrl")
+                            currentUrl = AppUpdateManager.validateRedirectTarget(url, location).toExternalForm()
+                            redirectsFollowed++
                         }
+
+                        else -> throw AppUpdateHttpException(
+                            responseCode,
+                            "APK download returned HTTP $responseCode",
+                        )
                     }
                 } finally {
-                    conn.disconnect()
+                    connection.disconnect()
                 }
             }
 
-            if (!success || !tempFile.exists() || tempFile.length() == 0L) {
-                throw IOException("APK download failed or exceeded redirects")
+            // Replace only after the temporary APK is complete, checksum-valid, package-valid and signer-valid.
+            if (targetFile.exists() && !targetFile.delete()) {
+                throw IOException("Unable to replace an invalid staged APK")
             }
-            if (!tempFile.renameTo(targetFile)) {
-                tempFile.copyTo(targetFile, overwrite = true)
-                tempFile.delete()
-            }
+            moveVerifiedFile(tempFile, targetFile, fallbackStageFile)
 
-            Log.i(TAG, "APK download completed: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
-
-            // ---- Integrity gate: the bytes must match the published SHA-256 before anything else.
-            if (expectedSha256 == null) {
-                targetFile.delete()
-                throw PermanentAppUpdateException("The release did not publish a SHA-256 checksum; refusing the update.")
-            }
-            if (expectedSizeBytes > 0L && targetFile.length() != expectedSizeBytes) {
-                targetFile.delete()
-                throw PermanentAppUpdateException(
-                    "Size mismatch: expected $expectedSizeBytes bytes but downloaded ${targetFile.length()} bytes.",
-                )
-            }
-            val actualSha256 = UpdateVerification.sha256Hex(targetFile)
-            if (!UpdateVerification.sha256Matches(expectedSha256, actualSha256)) {
-                targetFile.delete()
-                throw PermanentAppUpdateException("SHA-256 mismatch: the downloaded APK does not match the published checksum.")
-            }
-            Log.i(TAG, "SHA-256 verified for ${targetFile.name}")
-
-            prefs.edit()
-                .putString(KEY_STATE, STATE_READY_TO_INSTALL)
-                .putString(KEY_FILE_PATH, targetFile.absolutePath)
-                .putString(KEY_VERSION, targetVersion)
-                .putString(KEY_EXPECTED_SHA256, expectedSha256)
-                .apply()
-            AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
-
-            Result.success(
-                workDataOf(
-                    KEY_FILE_PATH to targetFile.absolutePath,
-                    KEY_VERSION to targetVersion,
-                )
+            val stagedError = AppUpdateManager.verifyDownloadedApk(
+                context = applicationContext,
+                file = targetFile,
+                targetVersion = targetVersion,
+                expectedSizeBytes = expectedSizeBytes,
+                expectedSha256 = expectedSha256,
             )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "AppUpdateDownloadWorker failed: ${e.message}", e)
-            if (AppUpdateDownloadPolicy.shouldRetry(runAttemptCount, e)) {
+            if (stagedError != null) {
+                targetFile.delete()
+                throw PermanentAppUpdateException(stagedError)
+            }
+
+            markReady(prefs, targetFile, targetVersion, expectedSizeBytes, expectedSha256)
+            AppUpdateNotificationFactory.notifyReady(applicationContext, targetVersion)
+            success(targetFile, targetVersion)
+        } catch (cancelled: CancellationException) {
+            // The final verified target is never removed on cancellation or worker recreation.
+            throw cancelled
+        } catch (failure: Exception) {
+            val retry = AppUpdateDownloadPolicy.shouldRetry(runAttemptCount, failure)
+            Log.w(TAG, "Application update download failed (attempt=$runAttemptCount, retry=$retry): ${failure.message}", failure)
+            if (retry) {
                 prefs.edit()
                     .putString(KEY_STATE, STATE_DOWNLOADING)
-                    .putString(KEY_ERROR, e.message ?: "Temporary update download failure")
-                    .apply()
+                    .putString(KEY_ERROR, failure.message ?: "Temporary update download failure")
+                    .commit()
                 Result.retry()
             } else {
                 tempFile.delete()
+                fallbackStageFile.delete()
                 prefs.edit()
                     .putString(KEY_STATE, STATE_FAILED)
-                    .putString(KEY_ERROR, e.message ?: "Download failed")
-                    .apply()
-                Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Download failed")))
+                    .putString(KEY_ERROR, failure.message ?: "Update download failed")
+                    .commit()
+                Result.failure(workDataOf(KEY_ERROR to (failure.message ?: "Update download failed")))
             }
         }
     }
 
-    private suspend fun writeBody(
-        conn: HttpURLConnection,
-        tempFile: File,
-        alreadyDownloaded: Long,
-        announcedTotal: Long,
+    private fun markReady(
         prefs: android.content.SharedPreferences,
+        file: File,
+        version: String,
+        expectedSizeBytes: Long,
+        expectedSha256: String,
     ) {
-        var downloadedBytes = alreadyDownloaded
-        conn.inputStream.use { input ->
-            FileOutputStream(tempFile, alreadyDownloaded > 0L).use { output ->
-                val buffer = ByteArray(8192)
-                var lastUpdate = 0L
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    if (isStopped) {
-                        prefs.edit().putString(KEY_STATE, STATE_CANCELLED).apply()
-                        throw CancellationException("Application update download cancelled")
-                    }
-                    output.write(buffer, 0, read)
-                    downloadedBytes += read
-                    val now = System.currentTimeMillis()
-                    if (now - lastUpdate > 250 || downloadedBytes == announcedTotal) {
-                        lastUpdate = now
-                        val progress = if (announcedTotal > 0) downloadedBytes.toFloat() / announcedTotal.toFloat() else 0f
-                        setProgress(
-                            workDataOf(
-                                KEY_PROGRESS to progress,
-                                KEY_DOWNLOADED_BYTES to downloadedBytes,
-                                KEY_TOTAL_BYTES to announcedTotal,
-                            )
-                        )
-                    }
-                }
-                output.flush()
+        val committed = prefs.edit()
+            .putString(KEY_STATE, STATE_READY_TO_INSTALL)
+            .putString(KEY_FILE_PATH, file.absolutePath)
+            .putString(KEY_VERSION, version)
+            .putLong(KEY_EXPECTED_SIZE, expectedSizeBytes)
+            .putString(KEY_EXPECTED_SHA256, expectedSha256)
+            .commit()
+        if (!committed) throw IOException("Unable to persist the verified update state")
+    }
+
+    private fun success(file: File, version: String): Result = Result.success(
+        workDataOf(
+            KEY_FILE_PATH to file.absolutePath,
+            KEY_VERSION to version,
+            KEY_TARGET_VERSION to version,
+        ),
+    )
+
+    private fun failure(message: String): Result = Result.failure(workDataOf(KEY_ERROR to message))
+
+    private fun moveVerifiedFile(source: File, target: File, fallbackStage: File) {
+        try {
+            Files.move(
+                source.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            if (fallbackStage.exists() && !fallbackStage.delete()) {
+                throw IOException("Unable to clear APK staging file")
             }
+            source.copyTo(fallbackStage, overwrite = true)
+            FileOutputStream(fallbackStage, true).use { it.fd.sync() }
+            if (!fallbackStage.renameTo(target)) {
+                throw IOException("Unable to atomically publish the verified APK")
+            }
+            source.delete()
         }
     }
 
     companion object {
-        private const val TAG = "SnapVRKA-AppUpdateWorker"
-        const val WORK_NAME = "VRKA_APP_UPDATE_WORK"
+        private const val TAG = "VRKA-AppUpdateWorker"
+        const val WORK_NAME = AppUpdateDownloadPolicy.WORK_NAME
         const val PREFS_NAME = "vrka_app_update_prefs"
 
         const val KEY_DOWNLOAD_URL = "download_url"
@@ -232,11 +320,20 @@ class AppUpdateDownloadWorker(
         const val KEY_VERSION = "version"
         const val KEY_ERROR = "error"
         const val KEY_STATE = "state"
+        const val KEY_RELEASE_TAG = "release_tag"
+        const val KEY_RELEASE_NAME = "release_name"
+        const val KEY_RELEASE_BODY = "release_body"
+        const val KEY_RELEASE_PUBLISHED_AT = "release_published_at"
 
         const val STATE_IDLE = "IDLE"
         const val STATE_DOWNLOADING = "DOWNLOADING"
         const val STATE_READY_TO_INSTALL = "READY_TO_INSTALL"
         const val STATE_FAILED = "FAILED"
         const val STATE_CANCELLED = "CANCELLED"
+
+        private const val BUFFER_SIZE = 32 * 1024
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 60_000
+        private const val PROGRESS_UPDATE_INTERVAL_MS = 1_000L
     }
 }

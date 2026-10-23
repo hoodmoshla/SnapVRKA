@@ -122,7 +122,7 @@ class UpdateVerificationTest {
 
     @Test
     fun checksumFileParsingHandlesRealWorldFormats() {
-        val name = "SnapVRKA-v1.0.1.apk"
+        val name = "SnapVRKA-v1.0.1-arm64-v8a-release.apk"
         assertEquals(shaA, UpdateVerification.parseChecksumFile("$shaA  $name"))
         assertEquals(shaA, UpdateVerification.parseChecksumFile("${shaA.uppercase()} *$name"))
         assertEquals(shaA, UpdateVerification.parseChecksumFile("$shaA\n"))

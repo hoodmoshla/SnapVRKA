@@ -2,21 +2,14 @@ package com.mvrk.vrka.update
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import java.util.concurrent.TimeUnit
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.mvrk.vrka.BuildConfig
 import com.mvrk.vrka.SettingsRepository
 import com.mvrk.vrka.worker.AppUpdateDownloadWorker
@@ -35,8 +28,10 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.URI
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 class AppUpdateManager(
     private val context: Context,
@@ -54,7 +49,7 @@ class AppUpdateManager(
     private var activeDownloadJob: Job? = null
 
     val currentVersion: SemanticVersion by lazy {
-        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(1, 0, 0)
+        SemanticVersion.parseOrNull(BuildConfig.VERSION_NAME) ?: SemanticVersion(4, 5, 1)
     }
 
     init {
@@ -63,14 +58,7 @@ class AppUpdateManager(
 
     private fun restoreStateAndObserveWorker() {
         val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
-        val savedState = prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null)
-        val savedFilePath = prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null)
-        if (savedState == AppUpdateDownloadWorker.STATE_READY_TO_INSTALL && !savedFilePath.isNullOrBlank()) {
-            val file = File(savedFilePath)
-            if (file.exists() && file.length() > 0L) {
-                _downloadState.value = AppUpdateDownloadState.ReadyToInstall(file)
-            }
-        }
+        restoreSavedUpdateState(prefs, forceShowDialog = true)
 
         runCatching {
             val workManager = WorkManager.getInstance(context)
@@ -78,36 +66,188 @@ class AppUpdateManager(
                 workManager.getWorkInfosForUniqueWorkFlow(AppUpdateDownloadWorker.WORK_NAME).collect { workInfos ->
                     val workInfo = workInfos.firstOrNull() ?: return@collect
                     when (workInfo.state) {
-                        WorkInfo.State.RUNNING -> {
+                        WorkInfo.State.ENQUEUED,
+                        WorkInfo.State.BLOCKED,
+                        WorkInfo.State.RUNNING,
+                        -> {
+                            val release = loadStoredRelease(prefs)
+                            if (release != null && release.version.isNewerThan(currentVersion)) {
+                                _checkState.value = AppUpdateCheckState.UpdateAvailable(release)
+                            }
                             val progress = workInfo.progress.getFloat(AppUpdateDownloadWorker.KEY_PROGRESS, 0f)
                             val downloaded = workInfo.progress.getLong(AppUpdateDownloadWorker.KEY_DOWNLOADED_BYTES, 0L)
-                            val total = workInfo.progress.getLong(AppUpdateDownloadWorker.KEY_TOTAL_BYTES, 0L)
+                            val total = workInfo.progress.getLong(
+                                AppUpdateDownloadWorker.KEY_TOTAL_BYTES,
+                                prefs.getLong(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE, 0L),
+                            )
                             _downloadState.value = AppUpdateDownloadState.Downloading(progress, downloaded, total)
                         }
                         WorkInfo.State.SUCCEEDED -> {
                             val filePath = workInfo.outputData.getString(AppUpdateDownloadWorker.KEY_FILE_PATH)
                                 ?: prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null)
+                            val release = loadStoredRelease(prefs)
+                            if (release == null || !release.version.isNewerThan(currentVersion)) {
+                                clearInstalledUpdate(prefs, filePath)
+                                return@collect
+                            }
                             if (filePath != null) {
                                 val file = File(filePath)
-                                if (file.exists() && file.length() > 0L) {
+                                val error = verifyDownloadedApk(
+                                    context,
+                                    file,
+                                    release.version.toString(),
+                                    release.apkSizeBytes,
+                                    release.apkSha256,
+                                )
+                                if (AppUpdateDownloadPolicy.canRestoreReadyToInstall(
+                                        persistedState = prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null),
+                                        fileExists = file.isFile,
+                                        apkVerified = error == null,
+                                        targetVersion = release.version,
+                                        installedVersion = currentVersion,
+                                    )
+                                ) {
+                                    _checkState.value = AppUpdateCheckState.UpdateAvailable(release)
                                     _downloadState.value = AppUpdateDownloadState.ReadyToInstall(file)
+                                } else {
+                                    deletePrivateUpdateFile(file)
+                                    _downloadState.value = AppUpdateDownloadState.Error(error ?: "APK verification failed")
                                 }
                             }
                         }
                         WorkInfo.State.FAILED -> {
                             val error = workInfo.outputData.getString(AppUpdateDownloadWorker.KEY_ERROR)
                                 ?: prefs.getString(AppUpdateDownloadWorker.KEY_ERROR, null)
-                                ?: context.getString(com.mvrk.vrka.R.string.update_failed)
+                                ?: "Download failed"
                             _downloadState.value = AppUpdateDownloadState.Error(error)
                         }
                         WorkInfo.State.CANCELLED -> {
-                            _downloadState.value = AppUpdateDownloadState.Idle
+                            restoreSavedUpdateState(prefs, forceShowDialog = false)
+                            if (_downloadState.value !is AppUpdateDownloadState.ReadyToInstall) {
+                                _downloadState.value = AppUpdateDownloadState.Idle
+                                if (prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null) ==
+                                    AppUpdateDownloadWorker.STATE_DOWNLOADING
+                                ) {
+                                    prefs.edit().putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_IDLE).commit()
+                                }
+                            }
                         }
-                        else -> Unit
                     }
                 }
             }
         }
+    }
+
+    /** Reopens the persisted update-ready state when the completion notification is tapped. */
+    fun restoreReadyUpdateFlow() {
+        val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+        restoreSavedUpdateState(prefs, forceShowDialog = true)
+    }
+
+    private fun restoreSavedUpdateState(
+        prefs: android.content.SharedPreferences,
+        forceShowDialog: Boolean,
+    ) {
+        val release = loadStoredRelease(prefs) ?: return
+        if (!release.version.isNewerThan(currentVersion)) {
+            clearInstalledUpdate(prefs, prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null))
+            return
+        }
+        if (forceShowDialog) _checkState.value = AppUpdateCheckState.UpdateAvailable(release)
+
+        when (prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null)) {
+            AppUpdateDownloadWorker.STATE_READY_TO_INSTALL -> {
+                val savedPath = prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null) ?: return
+                val file = File(savedPath)
+                val error = verifyDownloadedApk(
+                    context,
+                    file,
+                    release.version.toString(),
+                    release.apkSizeBytes,
+                    release.apkSha256,
+                )
+                if (AppUpdateDownloadPolicy.canRestoreReadyToInstall(
+                        persistedState = prefs.getString(AppUpdateDownloadWorker.KEY_STATE, null),
+                        fileExists = file.isFile,
+                        apkVerified = error == null,
+                        targetVersion = release.version,
+                        installedVersion = currentVersion,
+                    )
+                ) {
+                    _downloadState.value = AppUpdateDownloadState.ReadyToInstall(file)
+                } else {
+                    deletePrivateUpdateFile(file)
+                    prefs.edit()
+                        .putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_FAILED)
+                        .putString(AppUpdateDownloadWorker.KEY_ERROR, error)
+                        .commit()
+                    _downloadState.value = AppUpdateDownloadState.Error(error ?: "APK verification failed")
+                }
+            }
+
+            AppUpdateDownloadWorker.STATE_DOWNLOADING -> {
+                _downloadState.value = AppUpdateDownloadState.Downloading(
+                    progress = 0f,
+                    downloadedBytes = 0L,
+                    totalBytes = release.apkSizeBytes,
+                )
+            }
+
+            AppUpdateDownloadWorker.STATE_FAILED -> {
+                _downloadState.value = AppUpdateDownloadState.Error(
+                    prefs.getString(AppUpdateDownloadWorker.KEY_ERROR, null) ?: "Download failed",
+                )
+            }
+        }
+    }
+
+    private fun loadStoredRelease(prefs: android.content.SharedPreferences): AppReleaseInfo? {
+        val version = SemanticVersion.parseOrNull(prefs.getString(AppUpdateDownloadWorker.KEY_TARGET_VERSION, null))
+            ?: return null
+        val release = AppReleaseInfo(
+            tagName = prefs.getString(AppUpdateDownloadWorker.KEY_RELEASE_TAG, null) ?: "v$version",
+            version = version,
+            name = prefs.getString(AppUpdateDownloadWorker.KEY_RELEASE_NAME, null) ?: "VRKA Android $version",
+            body = prefs.getString(AppUpdateDownloadWorker.KEY_RELEASE_BODY, null).orEmpty(),
+            publishedAt = prefs.getString(AppUpdateDownloadWorker.KEY_RELEASE_PUBLISHED_AT, null).orEmpty(),
+            apkDownloadUrl = prefs.getString(AppUpdateDownloadWorker.KEY_DOWNLOAD_URL, null).orEmpty(),
+            apkFileName = prefs.getString(AppUpdateDownloadWorker.KEY_APK_NAME, null).orEmpty(),
+            apkSizeBytes = prefs.getLong(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE, 0L),
+            apkSha256 = prefs.getString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, null).orEmpty(),
+        )
+        return release.takeIf(::isValidReleaseForDownload)
+    }
+
+    private fun clearInstalledUpdate(prefs: android.content.SharedPreferences, savedPath: String?) {
+        savedPath?.let { deletePrivateUpdateFile(File(it)) }
+        prefs.edit()
+            .putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_IDLE)
+            .remove(AppUpdateDownloadWorker.KEY_FILE_PATH)
+            .remove(AppUpdateDownloadWorker.KEY_ERROR)
+            .remove(AppUpdateDownloadWorker.KEY_VERSION)
+            .remove(AppUpdateDownloadWorker.KEY_TARGET_VERSION)
+            .remove(AppUpdateDownloadWorker.KEY_RELEASE_TAG)
+            .remove(AppUpdateDownloadWorker.KEY_RELEASE_NAME)
+            .remove(AppUpdateDownloadWorker.KEY_RELEASE_BODY)
+            .remove(AppUpdateDownloadWorker.KEY_RELEASE_PUBLISHED_AT)
+            .remove(AppUpdateDownloadWorker.KEY_DOWNLOAD_URL)
+            .remove(AppUpdateDownloadWorker.KEY_APK_NAME)
+            .remove(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE)
+            .remove(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256)
+            .commit()
+        _downloadState.value = AppUpdateDownloadState.Idle
+        if (checkState.value is AppUpdateCheckState.UpdateAvailable) {
+            _checkState.value = AppUpdateCheckState.Idle
+        }
+    }
+
+    private fun deletePrivateUpdateFile(file: File) {
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return
+        val privateDirectories = listOf(
+            File(context.filesDir, "updates"),
+            File(context.cacheDir, "updates"),
+        ).mapNotNull { runCatching { it.canonicalFile }.getOrNull() }
+        if (canonical.parentFile?.let { it in privateDirectories } == true) canonical.delete()
     }
 
     fun checkForUpdate(isManual: Boolean = false) {
@@ -118,32 +258,42 @@ class AppUpdateManager(
 
         activeCheckJob = scope.launch {
             try {
+                val keepReadyUpdateVisible = !isManual &&
+                    _downloadState.value is AppUpdateDownloadState.ReadyToInstall &&
+                    _checkState.value is AppUpdateCheckState.UpdateAvailable
                 if (!isManual) {
-                    if (!settingsRepository.settings.value.autoUpdateCheck) {
-                        Log.d(TAG, "Automatic update checks are disabled in settings")
-                        _checkState.value = AppUpdateCheckState.Idle
-                        return@launch
-                    }
                     val lastCheck = settingsRepository.getLastAppUpdateCheckTimestamp()
                     val now = System.currentTimeMillis()
-                    if (now - lastCheck < AUTO_CHECK_INTERVAL_MS) {
-                        Log.d(TAG, "Skipping automatic update check; the cached result is still fresh")
+                    if (shouldSkipAutomaticCheck(isManual, lastCheck, now)) {
+                        Log.d(TAG, "Skipping background update check; within 24h gate")
                         return@launch
                     }
                 }
 
-                _checkState.value = AppUpdateCheckState.Checking
+                if (!keepReadyUpdateVisible) _checkState.value = AppUpdateCheckState.Checking
 
                 val release = fetchLatestRelease()
                 val now = System.currentTimeMillis()
                 settingsRepository.setLastAppUpdateCheckTimestamp(now)
 
-                if (release != null && release.version.isNewerThan(currentVersion)) {
-                    Log.i(TAG, "Update available: ${release.version} (current: $currentVersion)")
-                    _checkState.value = AppUpdateCheckState.UpdateAvailable(release)
-                } else {
+                val result = resolveCheckState(release, currentVersion, BuildConfig.VERSION_NAME)
+                if (keepReadyUpdateVisible && release != null) {
+                    val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+                    val stagedVersion = prefs.getString(AppUpdateDownloadWorker.KEY_TARGET_VERSION, null)
+                    if (stagedVersion != release.version.toString()) {
+                        clearInstalledUpdate(prefs, prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null))
+                    }
+                }
+                if (result is AppUpdateCheckState.UpdateAvailable) {
+                    Log.i(TAG, "Update available: ${release?.version} (current: $currentVersion)")
+                } else if (result is AppUpdateCheckState.UpToDate) {
                     Log.i(TAG, "App is up-to-date (version: $currentVersion)")
-                    _checkState.value = AppUpdateCheckState.UpToDate(BuildConfig.VERSION_NAME)
+                }
+                // Startup checks remain silent on invalid metadata; manual checks surface the error.
+                if (!(keepReadyUpdateVisible && (result is AppUpdateCheckState.Error || result is AppUpdateCheckState.UpToDate))) {
+                    _checkState.value = if (!isManual && result is AppUpdateCheckState.Error) {
+                        AppUpdateCheckState.Idle
+                    } else result
                 }
             } catch (ce: CancellationException) {
                 Log.d(TAG, "Update check cancelled")
@@ -156,7 +306,9 @@ class AppUpdateManager(
                         else -> e.message ?: "Unable to check for updates."
                     }
                     _checkState.value = AppUpdateCheckState.Error(message)
-                } else {
+                } else if (!(_downloadState.value is AppUpdateDownloadState.ReadyToInstall &&
+                        _checkState.value is AppUpdateCheckState.UpdateAvailable)
+                ) {
                     // Silent failure on startup/background
                     _checkState.value = AppUpdateCheckState.Idle
                 }
@@ -181,180 +333,66 @@ class AppUpdateManager(
     }
 
     fun downloadAndInstall(release: AppReleaseInfo) {
+        if (!isValidReleaseForDownload(release)) {
+            _downloadState.value = AppUpdateDownloadState.Error("Update release metadata failed security validation")
+            return
+        }
         if (_downloadState.value is AppUpdateDownloadState.Downloading) return
 
         _downloadState.value = AppUpdateDownloadState.Downloading(0f, 0L, release.apkSizeBytes)
 
-        scope.launch {
-            try {
-                // The published SHA-256 is fetched *before* downloading so the transfer can never
-                // succeed without something to verify the bytes against.
-                val sha256 = resolvePublishedSha256(release)
-                if (sha256 == null) {
-                    Log.e(TAG, "Release ${release.tagName} publishes no usable SHA-256 checksum")
-                    _downloadState.value = AppUpdateDownloadState.Error(
-                        context.getString(com.mvrk.vrka.R.string.update_sha_missing),
-                        UpdateRejectionReason.SHA256_MISSING,
-                    )
-                    return@launch
-                }
-                context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, sha256)
-                    .apply()
-                enqueueDownloadWorker(release, sha256)
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not prepare the update download: ${e.message}", e)
-                _downloadState.value = AppUpdateDownloadState.Error(
-                    e.message ?: context.getString(com.mvrk.vrka.R.string.update_failed),
-                )
-            }
-        }
-    }
-
-    private suspend fun resolvePublishedSha256(release: AppReleaseInfo): String? {
-        UpdateVerification.normalizeHex(release.apkSha256)?.let { return it }
-        val checksumUrl = release.apkSha256Url?.takeIf { it.isNotBlank() } ?: return null
-        val text = withContext(Dispatchers.IO) { httpGet(checksumUrl) }
-        return UpdateVerification.parseChecksumFile(text, release.apkFileName)
-    }
-
-    private fun enqueueDownloadWorker(release: AppReleaseInfo, sha256: String) {
         runCatching {
+            val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.edit()
+                .putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_DOWNLOADING)
+                .putString(AppUpdateDownloadWorker.KEY_VERSION, release.version.toString())
+                .putString(AppUpdateDownloadWorker.KEY_TARGET_VERSION, release.version.toString())
+                .putString(AppUpdateDownloadWorker.KEY_RELEASE_TAG, release.tagName)
+                .putString(AppUpdateDownloadWorker.KEY_RELEASE_NAME, release.name)
+                .putString(AppUpdateDownloadWorker.KEY_RELEASE_BODY, release.body)
+                .putString(AppUpdateDownloadWorker.KEY_RELEASE_PUBLISHED_AT, release.publishedAt)
+                .putString(AppUpdateDownloadWorker.KEY_DOWNLOAD_URL, release.apkDownloadUrl)
+                .putString(AppUpdateDownloadWorker.KEY_APK_NAME, release.apkFileName)
+                .putLong(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE, release.apkSizeBytes)
+                .putString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, release.apkSha256)
+                .commit()
+            if (!saved) throw IOException("Unable to save application update metadata")
+
             val workManager = WorkManager.getInstance(context)
-            val inputData = workDataOf(
-                AppUpdateDownloadWorker.KEY_DOWNLOAD_URL to release.apkDownloadUrl,
-                AppUpdateDownloadWorker.KEY_APK_NAME to release.apkFileName,
-                AppUpdateDownloadWorker.KEY_EXPECTED_SIZE to release.apkSizeBytes,
-                AppUpdateDownloadWorker.KEY_EXPECTED_SHA256 to sha256,
-                AppUpdateDownloadWorker.KEY_TARGET_VERSION to release.version.toString(),
-            )
-            val workRequest = OneTimeWorkRequestBuilder<AppUpdateDownloadWorker>()
-                .setInputData(inputData)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                )
-                .setBackoffCriteria(
-                    BackoffPolicy.EXPONENTIAL,
-                    AppUpdateDownloadPolicy.INITIAL_BACKOFF_MILLIS,
-                    TimeUnit.MILLISECONDS,
-                )
-                .build()
 
             workManager.enqueueUniqueWork(
                 AppUpdateDownloadWorker.WORK_NAME,
-                ExistingWorkPolicy.KEEP,
-                workRequest,
+                AppUpdateDownloadPolicy.UNIQUE_WORK_POLICY,
+                AppUpdateDownloadPolicy.createWorkRequest(release),
             )
         }.onFailure { error ->
             Log.e(TAG, "Failed to enqueue AppUpdateDownloadWorker: ${error.message}", error)
-            _downloadState.value = AppUpdateDownloadState.Error(error.message ?: context.getString(com.mvrk.vrka.R.string.update_failed))
+            context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putString(AppUpdateDownloadWorker.KEY_STATE, AppUpdateDownloadWorker.STATE_FAILED)
+                .putString(AppUpdateDownloadWorker.KEY_ERROR, error.message ?: "Failed to start update download")
+                .commit()
+            _downloadState.value = AppUpdateDownloadState.Error(error.message ?: "Failed to start background download")
         }
     }
-
-    /** versionCode of the running build, used to reject downgrades. */
-    val currentVersionCode: Long by lazy {
-        runCatching {
-            val pm = context.packageManager
-            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0L))
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageInfo(context.packageName, 0)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                info.versionCode.toLong()
-            }
-        }.getOrDefault(0L)
-    }
-
-    /** Reads package name, versionCode and signing certificate digests straight from the archive. */
-    fun readApkIdentity(file: File): ApkIdentity? = runCatching {
-        if (!file.isFile || file.length() == 0L) return null
-        val nativeAbis = UpdateVerification.nativeAbis(file) ?: return null
-        val pm = context.packageManager
-        val archiveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
-        } ?: return null
-
-        val certDigests = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val signingInfo = archiveInfo.signingInfo
-            val signers = when {
-                signingInfo == null -> null
-                signingInfo.hasMultipleSigners() -> signingInfo.apkContentsSigners
-                else -> signingInfo.signingCertificateHistory
-            }
-            signers?.forEach { certDigests.add(UpdateVerification.sha256Hex(it.toByteArray())) }
-        } else {
-            @Suppress("DEPRECATION")
-            archiveInfo.signatures?.forEach { certDigests.add(UpdateVerification.sha256Hex(it.toByteArray())) }
-        }
-
-        ApkIdentity(
-            packageName = archiveInfo.packageName.orEmpty(),
-            versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                archiveInfo.longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                archiveInfo.versionCode.toLong()
-            },
-            versionName = archiveInfo.versionName.orEmpty(),
-            signerCertSha256 = certDigests,
-            nativeAbis = nativeAbis,
-        )
-    }.getOrNull()
-
-    /**
-     * Runs the complete trust chain on a downloaded APK and, only when it passes, hands it to the
-     * Android package installer. Returns the verification outcome so the UI can explain a refusal.
-     */
-    fun installVerifiedApk(
-        file: File,
-        expectedSha256: String?,
-        expectedSizeBytes: Long = 0L,
-    ): UpdateVerificationResult {
-        _downloadState.value = AppUpdateDownloadState.Verifying
-        val actualSha256 = UpdateVerification.sha256Hex(file)
-        val result = UpdateVerification.verify(
-            identity = readApkIdentity(file),
-            fileSizeBytes = if (file.exists()) file.length() else 0L,
-            actualSha256 = actualSha256,
-            expectedSha256 = expectedSha256,
-            currentVersionCode = currentVersionCode,
-            expectedSizeBytes = expectedSizeBytes,
-        )
-        return when (result) {
-            is UpdateVerificationResult.Trusted -> {
-                Log.i(TAG, "Update verified (sha256 + package + signature + versionCode + arm64-v8a); launching installer")
-                installApk(file)
-                result
-            }
-            is UpdateVerificationResult.Rejected -> {
-                Log.e(TAG, "Update rejected: ${result.reason} - ${result.detail}")
-                runCatching { if (file.exists()) file.delete() }
-                _downloadState.value = AppUpdateDownloadState.Error(result.detail, result.reason)
-                result
-            }
-        }
-    }
-
-    /** The SHA-256 that the completed download was verified against. */
-    fun expectedSha256ForPendingUpdate(): String? = UpdateVerification.normalizeHex(
-        context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, null),
-    )
 
     fun installApk(file: File) {
         try {
+            val canonicalFile = file.canonicalFile
+            val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            val expectedVersion = prefs.getString(AppUpdateDownloadWorker.KEY_TARGET_VERSION, null)
+                ?: SemanticVersion.parseOrNull(canonicalFile.name.substringAfter("-v").removeSuffix(".apk"))?.toString().orEmpty()
+            val verificationError = verifyDownloadedApk(
+                context = context,
+                file = canonicalFile,
+                targetVersion = expectedVersion,
+                expectedSizeBytes = prefs.getLong(AppUpdateDownloadWorker.KEY_EXPECTED_SIZE, canonicalFile.length()),
+                expectedSha256 = prefs.getString(AppUpdateDownloadWorker.KEY_EXPECTED_SHA256, null).orEmpty(),
+            )
+            if (verificationError != null) {
+                _downloadState.value = AppUpdateDownloadState.Error(verificationError)
+                return
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
                     val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
@@ -377,11 +415,11 @@ class AppUpdateManager(
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
             }
 
-            _downloadState.value = AppUpdateDownloadState.Installing
             context.startActivity(installIntent)
+            _downloadState.value = AppUpdateDownloadState.ReadyToInstall(canonicalFile)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer: ${e.message}", e)
-            _downloadState.value = AppUpdateDownloadState.Error("${context.getString(com.mvrk.vrka.R.string.update_failed)}: ${e.message}")
+            _downloadState.value = AppUpdateDownloadState.Error("Failed to launch package installer: ${e.message}")
         }
     }
 
@@ -390,11 +428,11 @@ class AppUpdateManager(
         parseReleaseJson(jsonStr)
     }
 
-    private fun httpGet(urlString: String, maxRedirects: Int = 5): String {
+    private fun httpGet(urlString: String): String {
         var currentUrl = urlString
         var redirects = 0
 
-        while (redirects < maxRedirects) {
+        while (true) {
             val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
@@ -414,9 +452,8 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        val nextUrl = resolveRedirectUrl(url, location)
-                        validateHttpsUrl(nextUrl)
-                        currentUrl = nextUrl
+                        if (!canFollowRedirect(redirects)) throw IOException("Too many redirects: $redirects")
+                        currentUrl = validateRedirectTarget(url, location).toExternalForm()
                         redirects++
                     }
                     HttpURLConnection.HTTP_FORBIDDEN -> {
@@ -429,7 +466,6 @@ class AppUpdateManager(
                 conn.disconnect()
             }
         }
-        throw IOException("Too many redirects: $redirects")
     }
 
     private suspend fun downloadFileWithProgress(
@@ -439,9 +475,8 @@ class AppUpdateManager(
     ) = withContext(Dispatchers.IO) {
         var currentUrl = urlStr
         var redirects = 0
-        val maxRedirects = 5
 
-        while (redirects < maxRedirects) {
+        while (true) {
             val url = validateHttpsUrl(currentUrl)
             val conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
@@ -491,9 +526,8 @@ class AppUpdateManager(
                     307, 308 -> {
                         val location = conn.getHeaderField("Location")
                             ?: throw IOException("HTTP redirect $code without Location header")
-                        val nextUrl = resolveRedirectUrl(url, location)
-                        validateHttpsUrl(nextUrl)
-                        currentUrl = nextUrl
+                        if (!canFollowRedirect(redirects)) throw IOException("Too many redirects downloading APK")
+                        currentUrl = validateRedirectTarget(url, location).toExternalForm()
                         redirects++
                     }
                     else -> throw IOException("Download failed with HTTP $code")
@@ -502,7 +536,6 @@ class AppUpdateManager(
                 conn.disconnect()
             }
         }
-        throw IOException("Too many redirects downloading APK")
     }
 
     companion object {
@@ -511,16 +544,11 @@ class AppUpdateManager(
         private const val DEFAULT_API_ENDPOINT =
             "https://api.github.com/repos/hoodmoshla/SnapVRKA/releases/latest"
         const val TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000L // 86,400,000 ms
-
-        /**
-         * Minimum age of a cached check before an *automatic* check may run again
-         * (app launch or return to foreground). Manual checks always bypass this.
-         */
-        const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6 hours
         private const val CONNECT_TIMEOUT_MS = 6000
         private const val READ_TIMEOUT_MS = 6000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 30000
         private const val BUFFER_SIZE = 8192
+        const val MAX_REDIRECTS = 5
 
         val ALLOWED_UPDATE_HOSTS = setOf(
             "api.github.com",
@@ -530,7 +558,138 @@ class AppUpdateManager(
             "raw.githubusercontent.com",
         )
 
-        val APK_NAME_PATTERN = Regex("""^SnapVRKA-v\d+\.\d+\.\d+\.apk$""", RegexOption.IGNORE_CASE)
+        private val CANONICAL_VERSION_PATTERN = Regex("""^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$""")
+        private val RELEASE_TAG_PATTERN = Regex("""^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$""")
+        val APK_NAME_PATTERN = Regex("""^SnapVRKA-v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?-arm64-v8a-release\.apk$""")
+
+        fun shouldSkipAutomaticCheck(isManual: Boolean, lastCheckMillis: Long, nowMillis: Long): Boolean =
+            !isManual && nowMillis - lastCheckMillis < TWENTY_FOUR_HOURS_MS
+
+        fun resolveCheckState(
+            release: AppReleaseInfo?,
+            currentVersion: SemanticVersion,
+            currentVersionName: String,
+        ): AppUpdateCheckState = when {
+            release == null -> AppUpdateCheckState.Error("Latest release metadata is invalid or has no canonical APK")
+            release.version.isNewerThan(currentVersion) -> AppUpdateCheckState.UpdateAvailable(release)
+            else -> AppUpdateCheckState.UpToDate(currentVersionName)
+        }
+
+        fun canFollowRedirect(redirectsFollowed: Int): Boolean = redirectsFollowed in 0 until MAX_REDIRECTS
+
+        fun validateRedirectTarget(baseUrl: URL, location: String): URL =
+            validateHttpsUrl(resolveRedirectUrl(baseUrl, location))
+
+        fun isValidDownloadTarget(targetVersion: String, apkFileName: String): Boolean {
+            val version = parseCanonicalVersion(targetVersion) ?: return false
+            return apkFileName == canonicalApkName(version)
+        }
+
+        fun isValidReleaseForDownload(release: AppReleaseInfo): Boolean {
+            val tagVersion = parseReleaseTag(release.tagName) ?: return false
+            if (tagVersion != release.version || release.apkFileName != canonicalApkName(tagVersion)) return false
+            if (release.apkSizeBytes <= 0L || AppUpdateDownloadPolicy.normalizeGitHubSha256(release.apkSha256) == null) return false
+            return runCatching { validateHttpsUrl(release.apkDownloadUrl) }.isSuccess
+        }
+
+        /** Verifies the staged bytes, package/version metadata and signing identity before ReadyToInstall or installer handoff. */
+        fun verifyDownloadedApk(
+            context: Context,
+            file: File,
+            targetVersion: String,
+            expectedSizeBytes: Long,
+            expectedSha256: String,
+        ): String? {
+            val canonicalFile = runCatching { file.canonicalFile }.getOrNull()
+                ?: return "APK verification failed: update file path is invalid"
+            val privateDirectories = listOf(
+                File(context.filesDir, "updates"),
+                File(context.cacheDir, "updates"),
+            ).mapNotNull { runCatching { it.canonicalFile }.getOrNull() }
+            if (canonicalFile.parentFile?.let { it in privateDirectories } != true || !canonicalFile.isFile) {
+                return "APK verification failed: update file is outside private staging"
+            }
+
+            val expectedVersionValue = parseCanonicalVersion(targetVersion)
+                ?: return "APK verification failed: release version is not canonical"
+            if (!isValidDownloadTarget(targetVersion, canonicalFile.name)) {
+                return "APK verification failed: APK filename does not match the expected release"
+            }
+            val expectedDigest = AppUpdateDownloadPolicy.normalizeGitHubSha256(expectedSha256)
+                ?: return "APK verification failed: expected checksum is invalid"
+            if (expectedSizeBytes <= 0L || canonicalFile.length() != expectedSizeBytes) {
+                return "APK verification failed: downloaded APK size is incomplete or unexpected"
+            }
+            val actualDigest = runCatching { AppUpdateDownloadPolicy.sha256(canonicalFile) }.getOrNull()
+                ?: return "APK verification failed: unable to read staged APK"
+            if (actualDigest != expectedDigest) {
+                return "APK verification failed: downloaded APK checksum does not match release metadata"
+            }
+
+            return try {
+                val pm = context.packageManager
+                val archiveInfo = packageArchiveInfo(pm, canonicalFile.absolutePath)
+                    ?: return "APK verification failed: corrupt or invalid package archive"
+                val installedInfo = packageInfo(pm, context.packageName)
+                val metadataError = validateInstallMetadata(
+                    apkFileName = canonicalFile.name,
+                    apkPackageName = archiveInfo.packageName,
+                    apkVersionName = archiveInfo.versionName,
+                    apkVersionCode = packageVersionCode(archiveInfo),
+                    installedPackageName = installedInfo.packageName,
+                    installedVersionName = installedInfo.versionName,
+                    installedVersionCode = packageVersionCode(installedInfo),
+                )
+                if (metadataError != null) return metadataError
+                if (archiveInfo.versionName != expectedVersionValue.toString()) {
+                    return "APK verification failed: package version does not match the selected release"
+                }
+                if (!haveSameSignerSet(
+                        packageSignerFingerprints(installedInfo),
+                        packageSignerFingerprints(archiveInfo),
+                    )
+                ) {
+                    return "APK verification failed: signing certificate mismatch or unavailable signer metadata"
+                }
+                null
+            } catch (error: Exception) {
+                "APK verification failed: ${error.message ?: "package metadata could not be read"}"
+            }
+        }
+
+        fun validateInstallMetadata(
+            apkFileName: String,
+            apkPackageName: String?,
+            apkVersionName: String?,
+            apkVersionCode: Long,
+            installedPackageName: String?,
+            installedVersionName: String?,
+            installedVersionCode: Long,
+        ): String? {
+            val filenameMatch = APK_NAME_PATTERN.matchEntire(apkFileName)
+                ?: return "APK verification failed: non-canonical APK filename"
+            val apkVersion = versionFromGroups(filenameMatch.groupValues)
+                ?: return "APK verification failed: malformed APK version"
+            if (apkPackageName.isNullOrBlank() || apkPackageName != installedPackageName) {
+                return "APK verification failed: package name mismatch"
+            }
+            if (apkVersionName != apkVersion.toString()) {
+                return "APK verification failed: version name does not match the canonical APK filename"
+            }
+            if (installedVersionName != null) {
+                val installedVersion = SemanticVersion.parseOrNull(installedVersionName)
+                if (installedVersion != null && !apkVersion.isNewerThan(installedVersion)) {
+                    return "APK verification failed: downgrade or same-version installation rejected"
+                }
+            }
+            if (apkVersionCode <= installedVersionCode) {
+                return "APK verification failed: version code is not newer than the installed app"
+            }
+            return null
+        }
+
+        fun haveSameSignerSet(installedSigners: Set<String>, candidateSigners: Set<String>): Boolean =
+            installedSigners.isNotEmpty() && candidateSigners.isNotEmpty() && installedSigners == candidateSigners
 
         fun isApprovedHost(host: String): Boolean {
             val h = host.lowercase()
@@ -546,7 +705,15 @@ class AppUpdateManager(
             if (!url.protocol.equals("https", ignoreCase = true)) {
                 throw SecurityException("Insecure protocol '${url.protocol}' rejected (HTTPS required): $urlString")
             }
-            val host = url.host.lowercase()
+            val uri = try {
+                url.toURI()
+            } catch (e: Exception) {
+                throw SecurityException("Malformed update URL: $urlString", e)
+            }
+            if (!uri.rawUserInfo.isNullOrEmpty() || (uri.port != -1 && uri.port != 443) || uri.rawFragment != null) {
+                throw SecurityException("Unsafe URL authority or fragment rejected: $urlString")
+            }
+            val host = url.host.lowercase(java.util.Locale.ROOT)
             if (!isApprovedHost(host)) {
                 throw SecurityException("Host '$host' is not an approved GitHub update host: $urlString")
             }
@@ -575,6 +742,14 @@ class AppUpdateManager(
         }
 
         fun parseReleaseJson(jsonString: String): AppReleaseInfo? {
+            return try {
+                parseReleaseJsonUnchecked(jsonString)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private fun parseReleaseJsonUnchecked(jsonString: String): AppReleaseInfo? {
             val trimmed = jsonString.trim()
             val json = if (trimmed.startsWith("[")) {
                 val array = JSONArray(trimmed)
@@ -598,7 +773,7 @@ class AppUpdateManager(
             if (json.optBoolean("prerelease", false)) return null
 
             val tagName = json.optString("tag_name", "").trim()
-            val version = SemanticVersion.parseOrNull(tagName) ?: return null
+            val version = parseReleaseTag(tagName) ?: return null
 
             val name = json.optString("name", "").ifBlank { tagName }
             val body = json.optString("body", "")
@@ -606,27 +781,22 @@ class AppUpdateManager(
 
             val assets = json.optJSONArray("assets") ?: return null
             var chosenAsset: JSONObject? = null
-            var checksumAsset: JSONObject? = null
-            val deltaAssets = mutableListOf<ReleaseAsset>()
-            val expectedVersionApk = "SnapVRKA-v$version.apk"
-            val expectedChecksumApk = "$expectedVersionApk.sha256"
+            val expectedVersionApk = canonicalApkName(version)
 
-            // APK asset selection must require the expected SnapVRKA APK naming convention:
-            // SnapVRKA-vX.Y.Z.apk. Reject unrelated APK assets (including legacy VRKA-Android APKs).
+            // Accept only SnapVRKA's own arm64 release asset. Unrelated APKs and non-APK assets are rejected.
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val assetName = asset.optString("name", "")
-                if (APK_NAME_PATTERN.matches(assetName) &&
-                    assetName.equals(expectedVersionApk, ignoreCase = true)
-                ) {
+                if (assetName == expectedVersionApk) {
+                    if (chosenAsset != null) return null
                     chosenAsset = asset
-                    break
                 }
             }
 
             val asset = chosenAsset ?: return null
             val apkDownloadUrl = asset.optString("browser_download_url", "")
             if (!apkDownloadUrl.startsWith("https://", ignoreCase = true)) return null
+            if (!apkDownloadUrl.contains("/hoodmoshla/SnapVRKA/", ignoreCase = true)) return null
             try {
                 validateHttpsUrl(apkDownloadUrl)
             } catch (_: Exception) {
@@ -634,32 +804,27 @@ class AppUpdateManager(
             }
 
             val apkFileName = asset.optString("name", expectedVersionApk)
+            if (APK_NAME_PATTERN.matchEntire(apkFileName) == null) return null
             val apkSizeBytes = asset.optLong("size", 0L)
-
-            // Second pass: checksum + optional delta assets for the chosen APK.
+            if (apkSizeBytes <= 0L) return null
+            val htmlUrl = json.optString("html_url", "")
+            var apkSha256Url: String? = null
+            val deltaAssets = mutableListOf<ReleaseAsset>()
             for (i in 0 until assets.length()) {
-                val candidate = assets.getJSONObject(i)
-                val candidateName = candidate.optString("name", "")
-                val candidateUrl = candidate.optString("browser_download_url", "")
-                if (!candidateUrl.startsWith("https://", ignoreCase = true)) continue
-                if (runCatching { validateHttpsUrl(candidateUrl) }.isFailure) continue
-
-                when {
-                    candidateName.equals("$apkFileName.sha256", ignoreCase = true) ||
-                        candidateName.equals(expectedChecksumApk, ignoreCase = true) ->
-                        checksumAsset = candidate
-
-                    candidateName.endsWith(".delta", ignoreCase = true) ->
-                        deltaAssets.add(
-                            ReleaseAsset(
-                                fileName = candidateName,
-                                downloadUrl = candidateUrl,
-                                sizeBytes = candidate.optLong("size", 0L),
-                                sha256 = null,
-                            ),
-                        )
+                val extra = assets.getJSONObject(i)
+                val extraName = extra.optString("name", "")
+                val extraUrl = extra.optString("browser_download_url", "")
+                if (extraName == "$apkFileName.sha256" && extraUrl.startsWith("https://", true)) {
+                    apkSha256Url = extraUrl
+                } else if (extraName.startsWith("SnapVRKA-") && extraName.endsWith(".delta") && extraUrl.startsWith("https://", true)) {
+                    deltaAssets += ReleaseAsset(
+                        fileName = extraName,
+                        downloadUrl = extraUrl,
+                        sizeBytes = extra.optLong("size", 0L),
+                    )
                 }
             }
+            val apkSha256 = AppUpdateDownloadPolicy.normalizeGitHubSha256(asset.optString("digest", "")).orEmpty()
 
             return AppReleaseInfo(
                 tagName = tagName,
@@ -670,11 +835,65 @@ class AppUpdateManager(
                 apkDownloadUrl = apkDownloadUrl,
                 apkFileName = apkFileName,
                 apkSizeBytes = apkSizeBytes,
-                apkSha256Url = checksumAsset?.optString("browser_download_url", "")?.takeIf { it.isNotBlank() },
-                apkSha256 = null,
-                htmlUrl = json.optString("html_url", ""),
+                apkSha256 = apkSha256,
+                apkSha256Url = apkSha256Url,
+                htmlUrl = htmlUrl,
                 deltaAssets = deltaAssets,
             )
+        }
+
+        private fun parseReleaseTag(tagName: String): SemanticVersion? {
+            val match = RELEASE_TAG_PATTERN.matchEntire(tagName) ?: return null
+            return versionFromGroups(match.groupValues)
+        }
+
+        private fun parseCanonicalVersion(version: String): SemanticVersion? {
+            val match = CANONICAL_VERSION_PATTERN.matchEntire(version) ?: return null
+            return versionFromGroups(match.groupValues)
+        }
+
+        private fun versionFromGroups(groups: List<String>): SemanticVersion? {
+            if (groups.size < 4) return null
+            val major = groups[1].toIntOrNull() ?: return null
+            val minor = groups[2].toIntOrNull() ?: return null
+            val patch = groups[3].toIntOrNull() ?: return null
+            val revision = groups.getOrNull(4)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+            return SemanticVersion(major, minor, patch, revision)
+        }
+
+        private fun canonicalApkName(version: SemanticVersion): String = "SnapVRKA-v$version-arm64-v8a-release.apk"
+
+        private fun packageArchiveInfo(pm: PackageManager, path: String) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageArchiveInfo(path, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(path, PackageManager.GET_SIGNATURES)
+        }
+
+        private fun packageInfo(pm: PackageManager, packageName: String) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+        }
+
+        private fun packageVersionCode(info: android.content.pm.PackageInfo): Long {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return info.longVersionCode
+            @Suppress("DEPRECATION")
+            return info.versionCode.toLong()
+        }
+
+        private fun packageSignerFingerprints(info: android.content.pm.PackageInfo): Set<String> {
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            return signatures.orEmpty().map { signature ->
+                MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                    .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            }.toSet()
         }
     }
 

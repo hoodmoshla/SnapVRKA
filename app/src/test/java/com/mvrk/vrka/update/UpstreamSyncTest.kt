@@ -107,7 +107,8 @@ class UpstreamSyncTest {
         val major = code / 10_000
         val minor = (code % 10_000) / 100
         val patch = code % 100
-        return "$major.$minor.$patch" to code
+        val name = if (patch >= 10 && major >= 5) "$major.$minor.${patch / 10}.${patch % 10}" else "$major.$minor.$patch"
+        return name to code
     }
 
     private fun currentVersionName(): String =

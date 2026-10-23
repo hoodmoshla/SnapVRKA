@@ -384,4 +384,11 @@
     <string name="notification_action_resume">استئناف</string>
     <string name="notification_completed_title">تم التحميل</string>
     <string name="notification_completed_text">النقر لفتح SnapVRKA</string>
+    <string name="app_update_downloading">جارٍ تنزيل الإصدار %1$s</string>
+    <string name="app_update_notification_channel">تحديثات التطبيق</string>
+    <string name="app_update_notification_channel_description">تقدم تنزيل تحديث SnapVRKA والتنبيه عند جهوزيته للتثبيت</string>
+    <string name="app_update_ready_title">التحديث جاهز</string>
+    <string name="theme_auto">تلقائي</string>
+    <string name="theme_light">فاتح</string>
+    <string name="theme_dark">داكن</string>
 </resources>

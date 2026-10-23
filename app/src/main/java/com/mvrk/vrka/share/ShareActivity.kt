@@ -105,7 +105,7 @@ class ShareActivity : ComponentActivity() {
                         runCatching { DownloadService.start(this) }
                     },
                     onProbe = { target ->
-                        manager.ensureRuntimeReady()
+                        Unit
                         MediaFormatProbe.probe(target, scope)
                     },
                     onFinish = { finishShareSheet() },

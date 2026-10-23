@@ -23,6 +23,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,16 +55,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mvrk.vrka.ui.AppUpdateDialog
 import com.mvrk.vrka.update.AppUpdateCheckState
+import com.mvrk.vrka.update.AppReleaseInfo
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -70,31 +71,40 @@ import kotlinx.coroutines.launch
 fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
+    sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
 ) {
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
+    val incomingUrl by sharedUrl.collectAsStateWithLifecycle()
+    var sharedUrlForHome by remember { mutableStateOf<String?>(null) }
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
     val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
-    var destination by remember { mutableStateOf(VrkaDestination.DOWNLOAD) }
+    val destinations = remember { VrkaDestination.entries }
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { destinations.size },
+    )
+    val destination = destinations[pagerState.currentPage]
     var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        manager.appUpdateManager.checkForUpdate(isManual = false)
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
-    // Smart automatic check: on launch *and* every time the app returns to the foreground.
-    // AppUpdateManager gates this behind the user setting plus a cached interval, so it never
-    // hits the network repeatedly.
-    LifecycleStartEffect(Unit) {
-        manager.appUpdateManager.checkForUpdate(isManual = false)
-        onStopOrDispose { }
+    LaunchedEffect(incomingUrl) {
+        if (!incomingUrl.isNullOrBlank()) {
+            sharedUrlForHome = incomingUrl
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
+        }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
@@ -102,6 +112,8 @@ fun VrkaRoot(
     ) {
         pendingRequest?.let(manager::enqueue)
         pendingRequest = null
+        pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
+        pendingAppUpdate = null
     }
 
     fun enqueue(request: DownloadRequest) {
@@ -116,7 +128,23 @@ fun VrkaRoot(
         } else {
             manager.enqueue(request)
         }
-        destination = VrkaDestination.QUEUE
+        scope.launch {
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
+    }
+
+    fun downloadAppUpdate(release: AppReleaseInfo) {
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingAppUpdate = release
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            manager.appUpdateManager.downloadAndInstall(release)
+        }
     }
 
     val activeJob = jobs.firstOrNull { !it.state.isTerminal }
@@ -155,12 +183,11 @@ fun VrkaRoot(
                     val activeJobs = remember(jobs) { jobs.filterNot { it.state.isTerminal } }
                     val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
 
-                    val couldNotAddDownload = stringResource(R.string.error_could_not_add)
-                    val handleEnqueue = remember(scope, snackbar, couldNotAddDownload) {
+                    val handleEnqueue = remember(scope, snackbar) {
                         { request: DownloadRequest ->
                             runCatching { enqueue(request) }.onFailure { error ->
                                 pendingRequest = null
-                                val message = error.message ?: couldNotAddDownload
+                                val message = error.message ?: "Could not add download"
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
                             Unit
@@ -203,26 +230,27 @@ fun VrkaRoot(
                         }
                     }
 
-                    // Clean single-destination composition: Zero background screen measurement or overdraw
-                    Box(
+                    // Responsive swipeable pager: synchronized with bottom nav and indicator puck
+                    HorizontalPager(
+                        state = pagerState,
                         modifier = Modifier
                             .fillMaxSize()
                             .nestedScroll(scrollBackdropConnection)
                             .layerBackdrop(screenBackdrop),
-                    ) {
-                        when (destination) {
+                        beyondViewportPageCount = 1,
+                    ) { page ->
+                        when (destinations[page]) {
                             VrkaDestination.DOWNLOAD -> {
                                 HomeScreen(
                                     settings = settings,
+                                    repository = manager.settingsRepository,
                                     runtime = runtime,
+                                    initialUrl = sharedUrlForHome,
+                                    onInitialUrlConsumed = { sharedUrlForHome = null },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
-                                    onProbe = { target ->
-                                        manager.ensureRuntimeReady()
-                                        com.mvrk.vrka.share.MediaFormatProbe.probe(target, scope)
-                                    },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)
@@ -233,7 +261,7 @@ fun VrkaRoot(
                             VrkaDestination.QUEUE -> {
                                 JobsScreen(
                                     jobs = activeJobs,
-                                    emptyMessage = stringResource(R.string.queue_empty_message),
+                                    emptyMessage = "Your active queue is empty.",
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -249,7 +277,7 @@ fun VrkaRoot(
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
                                     jobs = historyJobs,
-                                    emptyMessage = stringResource(R.string.history_empty_message),
+                                    emptyMessage = "Completed and failed downloads appear here.",
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -258,6 +286,11 @@ fun VrkaRoot(
                                     onOpen = manager::openOutput,
                                     onShare = manager::shareOutput,
                                     onDelete = manager::deleteJob,
+                                    onDeleteRecord = manager::deleteHistoryRecord,
+                                    onDeleteWithFile = { scope.launch { manager.deleteJobWithFiles(it) } },
+                                    onDeleteRecords = manager::deleteHistoryRecords,
+                                    onDeleteJobsWithFiles = { scope.launch { manager.deleteJobsWithFiles(it) } },
+                                    onClearAll = { deleteFiles -> scope.launch { manager.clearAllHistory(deleteFiles) } },
                                     onClear = manager::clearFinished,
                                 )
                             }
@@ -281,7 +314,7 @@ fun VrkaRoot(
                     hostState = snackbar,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 104.dp),
+                        .padding(bottom = 96.dp),
                 )
 
                 Column(
@@ -289,7 +322,7 @@ fun VrkaRoot(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(bottom = 20.dp),
+                        .padding(bottom = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     AnimatedVisibility(
@@ -309,14 +342,22 @@ fun VrkaRoot(
                         if (activeJob != null) {
                             ActiveDownloadStrip(
                                 job = activeJob,
-                                onClick = { destination = VrkaDestination.QUEUE },
+                                onClick = {
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+                                    }
+                                },
                             )
                         }
                     }
 
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
-                        onDestinationSelected = { destination = it },
+                        onDestinationSelected = { dest ->
+                            scope.launch {
+                                pagerState.animateScrollToPage(destinations.indexOf(dest))
+                            }
+                        },
                     )
                 }
 
@@ -334,20 +375,13 @@ fun VrkaRoot(
                     AppUpdateDialog(
                         release = release,
                         downloadState = appUpdateDownloadState,
-                        onDownloadClick = { manager.appUpdateManager.downloadAndInstall(release) },
+                        onDownloadClick = { downloadAppUpdate(release) },
                         onDismissClick = manager.appUpdateManager::dismissUpdate,
                         onInstallClick = {
-                            val ready = appUpdateDownloadState as? com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall
-                            if (ready != null) {
-                                // Re-runs the full trust chain (SHA-256, package, signature,
-                                // versionCode) right before handing the file to the installer.
-                                manager.appUpdateManager.installVerifiedApk(
-                                    file = ready.file,
-                                    expectedSha256 = manager.appUpdateManager.expectedSha256ForPendingUpdate(),
-                                    expectedSizeBytes = release.apkSizeBytes,
-                                )
+                            if (appUpdateDownloadState is com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall) {
+                                manager.appUpdateManager.installApk((appUpdateDownloadState as com.mvrk.vrka.update.AppUpdateDownloadState.ReadyToInstall).file)
                             } else {
-                                manager.appUpdateManager.downloadAndInstall(release)
+                                downloadAppUpdate(release)
                             }
                         },
                     )
@@ -366,7 +400,9 @@ fun VrkaRoot(
     }
 
     LaunchedEffect(openQueueToken) {
-        if (openQueueToken > 0L) destination = VrkaDestination.QUEUE
+        if (openQueueToken > 0L) {
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
     }
 }
 
@@ -391,77 +427,88 @@ private fun FallbackInteractionOverlay(
                     .fillMaxWidth()
                     .statusBarsPadding()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Row(
+                            modifier = Modifier.weight(1f, fill = false),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Surface(
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
-                                    stringResource(R.string.state_browser_fallback),
+                                    "BROWSER FALLBACK",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                                 )
                             }
                             Text(
-                                fallbackState.job.title.ifBlank {
+                                text = fallbackState.job.title.ifBlank {
                                     runCatching { Uri.parse(fallbackState.engine.targetUrl).host }.getOrNull().orEmpty()
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-                        Text(
-                            when {
-                                candidateCount > 0 -> stringResource(R.string.fallback_capturing, candidateCount)
-                                else -> stringResource(R.string.fallback_select_server)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 12.dp,
+                                    vertical = 4.dp,
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(34.dp),
+                            ) {
+                                Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Button(
+                                onClick = onCancel,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 12.dp,
+                                    vertical = 4.dp,
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(34.dp),
+                            ) {
+                                Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                horizontal = 12.dp,
-                                vertical = 4.dp
-                            )
-                        ) {
-                            Text(stringResource(R.string.action_minimize), style = MaterialTheme.typography.labelMedium)
-                        }
-                        Button(
-                            onClick = onCancel,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                horizontal = 12.dp,
-                                vertical = 4.dp
-                            )
-                        ) {
-                            Text(stringResource(R.string.action_cancel), style = MaterialTheme.typography.labelMedium)
-                        }
+                    val statusMessage = when {
+                        candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
+                        else -> "Select server / Press Play to initiate media stream"
                     }
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+                    )
                 }
             }
 
@@ -491,7 +538,7 @@ private fun FallbackInteractionOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            stringResource(R.string.fallback_initializing),
+                            "Initializing fallback browser session...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -501,4 +548,3 @@ private fun FallbackInteractionOverlay(
         }
     }
 }
-

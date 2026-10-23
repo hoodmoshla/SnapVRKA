@@ -17,10 +17,10 @@ class UpdateArtifactPlannerTest {
         name = "SnapVRKA v1.0.1",
         body = "notes",
         publishedAt = "2026-10-01T00:00:00Z",
-        apkDownloadUrl = "https://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1.apk",
-        apkFileName = "SnapVRKA-v1.0.1.apk",
+        apkDownloadUrl = "https://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1-arm64-v8a-release.apk",
+        apkFileName = "SnapVRKA-v1.0.1-arm64-v8a-release.apk",
         apkSizeBytes = 1_000L,
-        apkSha256Url = "https://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1.apk.sha256",
+        apkSha256Url = "https://github.com/hoodmoshla/SnapVRKA/releases/download/v1.0.1/SnapVRKA-v1.0.1-arm64-v8a-release.apk.sha256",
         apkSha256 = "a".repeat(64),
         deltaAssets = deltas,
     )
@@ -34,7 +34,7 @@ class UpdateArtifactPlannerTest {
     fun theFullApkIsUsedWhileNoPatcherIsShipped() {
         val plan = UpdateArtifactPlanner.plan(release(), fromVersionCode = 10_000L)
         assertEquals(UpdateArtifactKind.FULL_APK, plan.kind)
-        assertTrue(plan.url.endsWith("SnapVRKA-v1.0.1.apk"))
+        assertTrue(plan.url.endsWith("SnapVRKA-v1.0.1-arm64-v8a-release.apk"))
         assertEquals("a".repeat(64), plan.sha256)
     }
 
@@ -71,7 +71,7 @@ class UpdateArtifactPlannerTest {
     fun theFallbackIsAlwaysTheVerifiedFullApk() {
         val plan = UpdateArtifactPlanner.plan(release(), fromVersionCode = 10_000L)
         assertEquals(plan.fallbackApkUrl, plan.url)
-        assertEquals("SnapVRKA-v1.0.1.apk", plan.fallbackApkFileName)
+        assertEquals("SnapVRKA-v1.0.1-arm64-v8a-release.apk", plan.fallbackApkFileName)
         assertEquals("a".repeat(64), plan.fallbackApkSha256)
     }
 

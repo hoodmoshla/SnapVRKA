@@ -6,22 +6,28 @@ data class SemanticVersion(
     val major: Int,
     val minor: Int,
     val patch: Int = 0,
+    val snapvrkaRevision: Int = 0,
 ) : Comparable<SemanticVersion> {
-
     override fun compareTo(other: SemanticVersion): Int {
         val majorCmp = major.compareTo(other.major)
         if (majorCmp != 0) return majorCmp
         val minorCmp = minor.compareTo(other.minor)
         if (minorCmp != 0) return minorCmp
-        return patch.compareTo(other.patch)
+        val patchCmp = patch.compareTo(other.patch)
+        if (patchCmp != 0) return patchCmp
+        return snapvrkaRevision.compareTo(other.snapvrkaRevision)
     }
 
     fun isNewerThan(other: SemanticVersion): Boolean = this > other
 
-    override fun toString(): String = "$major.$minor.$patch"
+    override fun toString(): String = if (snapvrkaRevision > 0) {
+        "$major.$minor.$patch.$snapvrkaRevision"
+    } else {
+        "$major.$minor.$patch"
+    }
 
     companion object {
-        private val SEMVER_REGEX = Regex("""^[vV]?(\d+)\.(\d+)(?:\.(\d+))?(?:[-+].*)?$""")
+        private val SEMVER_REGEX = Regex("""^[vV]?(\d+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+].*)?$""")
 
         fun parseOrNull(versionStr: String?): SemanticVersion? {
             if (versionStr.isNullOrBlank()) return null
@@ -29,18 +35,11 @@ data class SemanticVersion(
             val major = match.groupValues[1].toIntOrNull() ?: return null
             val minor = match.groupValues[2].toIntOrNull() ?: return null
             val patch = match.groupValues.getOrNull(3)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
-            return SemanticVersion(major, minor, patch)
+            val revision = match.groupValues.getOrNull(4)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+            return SemanticVersion(major, minor, patch, revision)
         }
     }
 }
-
-/** A publishable artifact attached to a release (full APK or a future delta patch). */
-data class ReleaseAsset(
-    val fileName: String,
-    val downloadUrl: String,
-    val sizeBytes: Long,
-    val sha256: String? = null,
-)
 
 data class AppReleaseInfo(
     val tagName: String,
@@ -51,17 +50,21 @@ data class AppReleaseInfo(
     val apkDownloadUrl: String,
     val apkFileName: String,
     val apkSizeBytes: Long,
-    /** URL of the published `<apk>.sha256` asset, when the release provides one. */
+    val apkSha256: String = "",
     val apkSha256Url: String? = null,
-    /** Checksum for the APK, resolved from the release name when GitHub exposes it. */
-    val apkSha256: String? = null,
     val htmlUrl: String = "",
-    /** Delta patches published alongside the APK (currently none). */
     val deltaAssets: List<ReleaseAsset> = emptyList(),
 ) {
-    /** True when the release carries everything needed for a fully verified install. */
-    val isVerifiable: Boolean get() = !apkSha256Url.isNullOrBlank() || !apkSha256.isNullOrBlank()
+    val isVerifiable: Boolean
+        get() = !apkSha256Url.isNullOrBlank() || apkSha256.length == 64
 }
+
+data class ReleaseAsset(
+    val fileName: String,
+    val downloadUrl: String,
+    val sizeBytes: Long,
+    val sha256: String? = null,
+)
 
 sealed interface AppUpdateCheckState {
     data object Idle : AppUpdateCheckState
@@ -73,21 +76,12 @@ sealed interface AppUpdateCheckState {
 
 sealed interface AppUpdateDownloadState {
     data object Idle : AppUpdateDownloadState
-
     data class Downloading(
         val progress: Float,
         val downloadedBytes: Long,
         val totalBytes: Long,
     ) : AppUpdateDownloadState
-
-    /** The bytes are on disk; SHA-256 / package / signature / version are being checked. */
-    data object Verifying : AppUpdateDownloadState
-
     data class ReadyToInstall(val file: File) : AppUpdateDownloadState
     data object Installing : AppUpdateDownloadState
-
-    data class Error(
-        val message: String,
-        val reason: UpdateRejectionReason? = null,
-    ) : AppUpdateDownloadState
+    data class Error(val message: String) : AppUpdateDownloadState
 }

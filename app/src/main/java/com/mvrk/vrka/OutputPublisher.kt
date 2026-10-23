@@ -14,11 +14,13 @@ internal class OutputPublisher(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
 ) {
+    private val publishLock = Any()
+
     fun publish(
         file: File,
         requestedName: String = file.name,
         destinationTreeUri: String? = null,
-    ): Uri {
+    ): Uri = synchronized(publishLock) {
         require(file.isFile) { "Completed output is missing." }
         val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
         val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
@@ -29,11 +31,20 @@ internal class OutputPublisher(
             publishToDownloads(file, safeName)
         }
         if (!file.delete()) file.deleteOnExit()
-        return uri
+        uri
     }
 
     fun delete(uriText: String): Boolean = runCatching {
         context.contentResolver.delete(Uri.parse(uriText), null, null) > 0
+    }.getOrDefault(false)
+
+    fun fileExists(uriText: String): Boolean = runCatching {
+        val uri = Uri.parse(uriText)
+        val cursorCount = runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { it.count }
+        }.getOrNull()
+        if (cursorCount != null && cursorCount > 0) return true
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
     private fun publishToDownloads(file: File, name: String): Uri {
@@ -50,7 +61,7 @@ internal class OutputPublisher(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOWNLOADS + "/SnapVRKA",
+                    Environment.DIRECTORY_DOWNLOADS + "/VRKA",
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
@@ -156,7 +167,7 @@ internal class OutputPublisher(
         }
 
         fun formatDisplayPath(treeUriString: String?): String {
-            if (treeUriString.isNullOrBlank()) return "Downloads/SnapVRKA"
+            if (treeUriString.isNullOrBlank()) return "Downloads/VRKA"
             return runCatching {
                 val docId = if (treeUriString.contains("/tree/")) {
                     val raw = treeUriString.substringAfter("/tree/").substringBefore("?")
@@ -176,8 +187,8 @@ internal class OutputPublisher(
                 } else {
                     docId
                 }
-                cleanPath.ifBlank { "Downloads/SnapVRKA" }
-            }.getOrDefault("Downloads/SnapVRKA")
+                cleanPath.ifBlank { "Downloads/VRKA" }
+            }.getOrDefault("Downloads/VRKA")
         }
     }
 }
@@ -198,7 +209,7 @@ internal object SafeOutputNames {
             .joinToString("")
             .replace(Regex("\\s+"), " ")
             .trim(' ', '.')
-        val fallback = "SnapVRKA-" + System.currentTimeMillis().toString(36).takeLast(8)
+        val fallback = "VRKA-" + System.currentTimeMillis().toString(36).takeLast(8)
         val stem = truncateUtf8(rawStem.ifBlank { fallback }, MAX_STEM_BYTES)
             .trim(' ', '.')
             .ifBlank { fallback }
