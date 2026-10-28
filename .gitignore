@@ -11,6 +11,7 @@ signing.properties
 .artifacts/
 .kotlin/
 .source-stage/
+*.aab
 /*.png
 /*.class
 captures/
